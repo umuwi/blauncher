@@ -1,0 +1,46 @@
+# --- Сборка ---------------------------------------------------------------
+# app/ и lib/ наполняет fetch-libs.ps1 (сторонние jar с Maven Central) и build.ps1 (BLauncher.jar)
+/app/
+/lib/
+/build/
+/dist/
+/runtime/
+/out/
+/BLauncher.exe
+*.class
+*.bak-*
+manifest*.json
+
+# blcore (мод-компаньон, Gradle)
+/blcore/build/
+/blcore/.gradle/
+
+# установщик: собирается build-installer.ps1
+/installer/*.exe
+/installer/BuildInfo.g.cs
+
+# --- Данные игрока и запуска ---------------------------------------------------
+# сборки, моды, миры, серверы (servers.json хранит ключи агентов открытым текстом), аккаунты
+/launcher_root/
+/config/
+/logs/
+*.log
+hs_err_pid*.log
+
+# --- Не для публичного репозитория ----------------------------------------------
+# серверная часть сайта (адрес админки), рабочие заметки, настройки инструментов
+/server/
+/CLAUDE.md
+/HANDOFF_VPS.md
+/.claude/
+/.agents/
+/.impeccable/
+/skills-lock.json
+
+# --- Система и редакторы ---------------------------------------------------
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+Desktop.ini
+.DS_Store

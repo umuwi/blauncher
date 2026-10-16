@@ -1,0 +1,137 @@
+{
+  "violet": {
+    "colors": {
+      "bg": "#120F1D",
+      "text": "#F4F1FA",
+      "accent": "#8D6BFA",
+      "surface": "#1A1626",
+      "line": "#322A49",
+      "surface-2": "#221D31",
+      "text-muted": "#A49DBB",
+      "accent-hover": "#A98EFF",
+      "hover-veil": "rgba(255,255,255,0.045)",
+      "text-dim": "#7A7390",
+      "danger": "#EB5757",
+      "text-on-accent": "#FFFFFF",
+      "text-on-danger": "#FFFFFF",
+      "danger-text": "#FF8F8F",
+      "line-strong": "#443B62",
+      "ok": "#4CB782",
+      "warn": "#F2994A",
+      "console-bg": "#07060C",
+      "scrim": "rgba(0,0,0,0.62)",
+      "text-on-veil": "#F4F1FA",
+      "launch-veil": "rgba(11,9,18,0.6)"
+    },
+    "alphas": {
+      "accent-soft": 0.14,
+      "accent-line": 0.55,
+      "accent-glow": 0.0,
+      "accent-faint": 0.07,
+      "ok-soft": 0.18,
+      "ok-line": 0.4,
+      "ok-glow": 0.0,
+      "warn-glow": 0.0,
+      "danger-soft": 0.12,
+      "danger-faint": 0.08,
+      "danger-line": 0.4,
+      "danger-glow": 0.0
+    },
+    "gradients": {
+      "grad-bg": "linear-gradient(to bottom, @bg@, @bg@)",
+      "grad-mark": "linear-gradient(to bottom right, #2E2547, #17131F)",
+      "grad-play": "linear-gradient(to bottom, #9A7CFB, #7F5BF2)",
+      "grad-play-year": "linear-gradient(to right, #ef4444, #dc2626 45%, #b91c1c)"
+    }
+  },
+  "black": {
+    "colors": {
+      "bg": "#000000",
+      "text": "#EDEDED",
+      "accent": "#EDEDED",
+      "surface": "#0A0A0A",
+      "line": "#1F1F1F",
+      "surface-2": "#141414",
+      "hover-veil": "rgba(255,255,255,0.05)",
+      "text-muted": "#A1A1A1",
+      "text-dim": "#7A7A7A",
+      "danger": "#F25555",
+      "text-on-accent": "#000000",
+      "text-on-danger": "#FFFFFF",
+      "danger-text": "#FF8F8F",
+      "line-strong": "#333333",
+      "ok": "#45C27A",
+      "warn": "#F5A524",
+      "console-bg": "#000000",
+      "scrim": "rgba(0,0,0,0.7)",
+      "text-on-veil": "#EDEDED",
+      "launch-veil": "rgba(0,0,0,0.6)",
+      "accent-hover": "#FFFFFF"
+    },
+    "alphas": {
+      "accent-soft": 0.14,
+      "accent-line": 0.55,
+      "accent-glow": 0.0,
+      "accent-faint": 0.07,
+      "ok-soft": 0.18,
+      "ok-line": 0.4,
+      "ok-glow": 0.0,
+      "warn-glow": 0.0,
+      "danger-soft": 0.12,
+      "danger-faint": 0.08,
+      "danger-line": 0.4,
+      "danger-glow": 0.0
+    },
+    "gradients": {
+      "grad-bg": "linear-gradient(to bottom, @bg@, @bg@)",
+      "grad-mark": "linear-gradient(to bottom right, #262626, #111111)",
+      "grad-play": "linear-gradient(to bottom, #FFFFFF, #E6E6E6)",
+      "grad-play-year": "linear-gradient(to right, #ef4444, #dc2626 45%, #b91c1c)"
+    }
+  },
+  "white": {
+    "colors": {
+      "bg": "#E6EBF4",
+      "text": "#131A28",
+      "accent": "#5B57E8",
+      "surface": "#F3F6FB",
+      "line": "#D3DAE7",
+      "surface-2": "#E9EEF6",
+      "text-muted": "#536079",
+      "hover-veil": "rgba(30,50,110,0.05)",
+      "text-dim": "#6C7890",
+      "danger": "#D93636",
+      "text-on-accent": "#FFFFFF",
+      "text-on-danger": "#FFFFFF",
+      "danger-text": "#C22F2F",
+      "line-strong": "#B5C0D3",
+      "ok": "#1E9E5A",
+      "warn": "#C26A09",
+      "console-bg": "#0F1011",
+      "scrim": "rgba(15,15,20,0.4)",
+      "text-on-veil": "#FFFFFF",
+      "launch-veil": "rgba(230,235,244,0.7)",
+      "accent-hover": "#4743D6"
+    },
+    "alphas": {
+      "accent-soft": 0.14,
+      "accent-line": 0.55,
+      "accent-glow": 0.0,
+      "accent-faint": 0.07,
+      "ok-soft": 0.15,
+      "ok-line": 0.5,
+      "ok-glow": 0.0,
+      "warn-glow": 0.0,
+      "danger-soft": 0.12,
+      "danger-faint": 0.08,
+      "danger-line": 0.4,
+      "danger-glow": 0.0
+    },
+    "gradients": {
+      "grad-bg": "linear-gradient(to bottom, @bg@, @bg@)",
+      "grad-mark": "linear-gradient(to bottom right, #E9E9EE, #D9D9E0)",
+      "grad-play": "linear-gradient(to bottom, #7564F2, #6352E8)",
+      "grad-play-year": "linear-gradient(to right, #ef4444, #dc2626 45%, #b91c1c)"
+    }
+  }
+}

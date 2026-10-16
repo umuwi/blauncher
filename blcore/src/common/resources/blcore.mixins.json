@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "ru.blauncher.blcore.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerListHudMixin",
+    "PlayerEntityMixin",
+    "PlayerListEntryMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -1,0 +1,1592 @@
+/* =============================================================================
+   BLauncher theme template - the single source of the interface's appearance.
+   -----------------------------------------------------------------------------
+   246 rules and no colour literals: every colour is a token slot filled in
+   at runtime by PaletteService from the player's palette (see model/Palette.java).
+
+   Edit THIS file, not the generated stylesheet. To add a role, add a token slot (its name between at-signs)
+   here and its value to the presets in Palette.java.
+
+   The three preview-violet / preview-black / preview-white swatches stay as fixed
+   literals on purpose: they show the three built-in themes, so they must not
+   follow the active palette.
+   ============================================================================= */
+
+.mono {    -fx-font-family: "JetBrains Mono";}
+
+/* How glyphs are drawn. JavaFX antialiases text in grey unless told otherwise, and the display
+   has a subpixel structure it can use instead - measured at +12.8% on the mean absolute
+   Laplacian of the rendered pixels, at the same font and size and with byte-identical text
+   metrics (see FxSmoothingProbe). The property belongs to the Text node, which is why this is
+   set on ".text": every Labeled keeps its text in a Text child carrying that style class, so
+   one rule reaches all of them. Where subpixel smoothing cannot be used - a translucent
+   background, a transformed node - JavaFX falls back to grey on its own. */
+.text {    -fx-font-smoothing-type: lcd;}
+
+.root {    
+    -fx-font-family: "Inter";
+    -fx-background-color: @bg@;
+    -fx-text-fill: @text@;
+    -fx-accent: @accent@;
+    -fx-focus-color: @accent@;
+    -fx-faint-focus-color: transparent;}
+
+.app-background {    -fx-background-color: @bg@;}
+
+.app-root {    -fx-background-color: transparent;}
+
+.rail {    -fx-background-color: @surface@;
+    -fx-border-color: transparent @line@ transparent transparent;
+    -fx-border-width: 0 1 0 0;}
+
+.rail-brand {    -fx-background-radius: 8;
+    -fx-background-color: @surface-2@;
+    -fx-cursor: hand;}
+
+.rail-btn {    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-border-width: 0;
+    -fx-text-fill: @text-muted@;
+    -fx-padding: 9 4;
+    -fx-cursor: hand;}
+
+.rail-btn:hover {    -fx-background-color: @surface-2@;}
+
+.rail-btn:selected {    -fx-background-color: @accent-soft@;}
+
+.rail-icon {    -fx-icon-color: @text-muted@;}
+
+.rail-btn:hover .rail-icon, .rail-btn:selected .rail-icon {    -fx-icon-color: @accent-hover@;}
+
+.rail-label {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";}
+
+.rail-btn:selected .rail-label {    -fx-text-fill: @accent-hover@;}
+
+.rail-account {    -fx-background-radius: 8;
+    -fx-text-fill: @text-muted@;
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 6;
+    -fx-pref-width: 30;
+    -fx-pref-height: 30;
+    -fx-max-width: 30;
+    -fx-max-height: 30;
+    -fx-cursor: hand;}
+
+.rail-account:hover {    -fx-background-color: @surface-2@;}
+
+.content-area {    -fx-background-color: @grad-bg@;}
+
+.screen-scroll {    -fx-background-color: transparent;
+    -fx-background: transparent;}
+
+.screen-scroll > .viewport {    -fx-background-color: transparent;}
+
+.screen {    -fx-padding: 26 32 30 32;
+    -fx-background-color: transparent;}
+
+.page-title {    -fx-font-size: 26px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @text@;}
+
+.page-sub {    -fx-font-size: 15px;
+    -fx-text-fill: @text-muted@;}
+
+.section-title {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;
+    -fx-font-family: "Inter SemiBold";}
+
+.panel {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-padding: 20;}
+
+.panel-title {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;
+    -fx-font-weight: 700;}
+
+.current-build-panel {    -fx-padding: 20;}
+
+.build-grid {    -fx-hgap: 10;
+    -fx-vgap: 10;}
+
+.build-scroll, .build-scroll > .viewport, .export-build-scroll, .export-build-scroll > .viewport {    -fx-background-color: transparent;
+    -fx-background: transparent;}
+
+.build-card {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 14;
+    -fx-cursor: hand;
+    /* min-width as well as pref: inside the Home strip the cards sit in an HBox, and an HBox
+       squeezes its children down to their minimum when the row is over-full — which is how a
+       handful of starred builds turned every square into a narrow sliver. The strip scrolls
+       instead (see installStripWheelScroll), so the cards keep their size. */
+    -fx-min-width: 180;
+    -fx-pref-width: 180;}
+
+.build-card:hover {    -fx-background-color: @surface-2@;}
+
+.build-card.selected {    -fx-border-color: @accent-line@;
+    -fx-background-color: @accent-soft@;}
+
+.build-icon-sm {    -fx-background-radius: 8;
+    -fx-min-width: 32;
+    -fx-min-height: 32;
+    -fx-max-width: 32;
+    -fx-max-height: 32;
+    /* The tile colour used to be set inline in Java, where no palette could reach it. */
+    -fx-background-color: @grad-mark@;}
+
+.build-icon-lg {    -fx-background-radius: 8;
+    -fx-min-width: 44;
+    -fx-min-height: 44;
+    -fx-max-width: 44;
+    -fx-max-height: 44;
+    -fx-background-color: @grad-mark@;}
+
+.build-icon-label {    -fx-text-fill: @text@;
+    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;}
+
+.build-title {    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.build-meta {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.build-like-btn {    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 2;
+    -fx-cursor: hand;}
+
+.build-like-btn:hover {    -fx-background-color: @hover-veil@;}
+
+.build-like-icon {    -fx-icon-color: @text-dim@;
+    -fx-icon-size: 14;}
+
+.build-like-icon-active {    -fx-icon-color: @danger@;
+    -fx-icon-size: 14;}
+
+.build-playtime {    -fx-background-color: transparent;
+    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text-muted@;}
+
+.add-build-card {    -fx-background-color: transparent;
+    -fx-border-color: @line@;
+    -fx-border-style: dashed;
+    -fx-border-width: 1;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-cursor: hand;
+    -fx-min-height: 78;}
+
+.add-build-card:hover {    -fx-border-color: @accent@;
+    -fx-text-fill: @text@;}
+
+.empty-state-label {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-wrap-text: true;
+    -fx-text-alignment: center;
+    -fx-padding: 24;}
+
+.selected-name {    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @text@;}
+
+.selected-sub {    -fx-font-size: 15px;
+    -fx-text-fill: @text-muted@;}
+
+.all-builds-link {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-border-color: transparent;}
+
+.all-builds-link:hover {    -fx-text-fill: @text@;}
+
+.locked-chip {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 7 12;
+    -fx-text-fill: @text-muted@;}
+
+.locked-chip .label {    -fx-text-fill: @text@;
+    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";}
+
+.locked-chip .ikonli-font-icon {    -fx-icon-color: @text-muted@;}
+
+.play-row {    -fx-padding: 6 0 0 0;}
+
+.play-btn {    -fx-background-color: @grad-play@;
+    -fx-text-fill: @text-on-accent@;
+    -fx-font-family: "Inter";
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 16 24;
+    -fx-cursor: hand;}
+
+.play-btn:hover {    -fx-translate-y: -1;}
+
+.play-btn.play-btn-year {    -fx-background-color: @grad-play-year@;
+    -fx-text-fill: @text-on-danger@;}
+
+.play-hint {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.status-text {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.status-label {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+/* Progress bars other than the launch strip (server setup, launcher update). JavaFX paints
+   those with a colour it derives from the accent, which is how they ended up a slightly
+   different blue than everything around them (measured: #818AED, #8B95FF). These rules come
+   before the launch block below, because the launch bar is a progress bar as well and keeps
+   its own shape - the bottom edge of the Play button rather than a bar beside it. */
+.progress-bar > .track {    -fx-background-color: @surface-2@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;}
+
+.progress-bar > .bar {    -fx-background-color: @accent@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 5;
+    -fx-padding: 4px;}
+
+.launch-progress {    -fx-accent: @accent@;}
+
+.launch-progress > .track {    -fx-background-color: @surface-2@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;}
+
+.launch-progress > .bar {    -fx-background-color: @accent@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 5;
+    -fx-padding: 4px;}
+
+/* The launch block: the action and its progress are one element. The bar is a strip
+   along the bottom edge of the Play button instead of a control sitting next to it,
+   and the hint and Stop button sit on one line underneath. */
+.play-block {    -fx-padding: 6 0 0 0;}
+
+.play-strip {    -fx-accent: @accent-hover@;
+    -fx-min-height: 4;
+    -fx-pref-height: 4;
+    -fx-max-height: 4;}
+
+.play-strip > .track {    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0 0 11 11;
+    -fx-border-width: 0;
+    -fx-border-color: transparent;}
+
+.play-strip > .bar {    -fx-background-color: @accent-hover@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0 0 11 11;
+    -fx-padding: 2px;}
+
+.secondary-button {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 9 16;
+    -fx-cursor: hand;}
+
+.secondary-button:hover {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.secondary-button .ikonli-font-icon {    -fx-icon-color: @text-muted@;}
+
+.secondary-button:hover .ikonli-font-icon {    -fx-icon-color: @text@;}
+
+.danger-button {    -fx-background-color: @danger-soft@;
+    -fx-border-color: @danger-line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @danger-text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 9 16;
+    -fx-cursor: hand;}
+
+.danger-button:hover {    -fx-border-color: @danger@;}
+
+/* Icons inside the danger button and the "installed" check in version lists. Both
+   used to be text characters, which the bundled faces do not contain - JavaFX
+   substituted a system font for them. */
+.danger-button .ikonli-font-icon {    -fx-icon-color: @danger-text@;}
+
+.installed-check {    -fx-icon-color: @ok@;}
+
+.server-action {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 7 16;
+    -fx-min-height: 34px;
+    -fx-cursor: hand;}
+
+.server-action:hover {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.server-action:disabled {    -fx-text-fill: @text-muted@;
+    -fx-border-color: @line@;}
+
+.share-trigger-btn {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 8 14;
+    -fx-min-height: 34px;
+    -fx-cursor: hand;}
+
+.share-trigger-btn:hover {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.share-trigger-btn .ikonli-font-icon {    -fx-icon-color: @text-muted@;}
+
+.share-trigger-btn:hover .ikonli-font-icon {    -fx-icon-color: @text@;}
+
+.copy-btn {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 0 16;
+    -fx-min-height: 34px;
+    -fx-cursor: hand;}
+
+.copy-btn:hover {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.copy-btn:disabled {    -fx-text-fill: @text-muted@;
+    -fx-border-color: @line@;}
+
+.input-field, .text-input, .search-input {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-prompt-text-fill: @text-muted@;
+    -fx-highlight-fill: @accent-line@;
+    -fx-highlight-text-fill: @text-on-accent@;
+    -fx-font-size: 15px;
+    -fx-padding: 9 12;}
+
+/* The same two colours on the multi-line fields: a console and the "about" box are text
+   inputs too, and selection in them was the lightest thing on the screen. */
+.text-area {    -fx-highlight-fill: @accent-line@;
+    -fx-highlight-text-fill: @text-on-accent@;}
+
+.input-field:focused, .text-input:focused, .search-input:focused {    -fx-border-color: @accent@;}
+
+.text-input:disabled {    -fx-text-fill: @text-muted@;
+    -fx-border-color: @line@;}
+
+.combo-box {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-mark-color: @text-muted@;}
+
+.combo-box:hover, .combo-box:focused {    -fx-border-color: @accent@;}
+
+/* The dropdown arrow. JavaFX draws it with its own two mark colours, so it stayed white in
+   every theme; measured on the running window before this rule existed. */
+.combo-box-base > .arrow-button {    -fx-background-color: transparent;}
+
+.combo-box-base > .arrow-button > .arrow {    -fx-background-color: @text-muted@;
+    -fx-background-insets: 0;
+    -fx-padding: 3 5;}
+
+.combo-box .list-cell {    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-background-color: transparent;}
+
+.combo-box-popup .list-view {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;}
+
+.combo-box-popup .list-cell {    -fx-text-fill: @text-muted@;
+    -fx-background-color: transparent;
+    -fx-padding: 8 10;}
+
+.combo-box-popup .list-cell:hover {    -fx-text-fill: @text@;
+    -fx-background-color: @surface@;}
+
+.combo-box-popup .list-cell:selected {    -fx-text-fill: @text@;
+    -fx-background-color: @accent-soft@;}
+
+.context-menu {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 4;}
+
+.context-menu .menu-item {    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10;}
+
+.context-menu .menu-item .label {    -fx-text-fill: @text@;
+    -fx-font-size: 15px;}
+
+.context-menu .menu-item:focused, .context-menu .menu-item:hover {    -fx-background-color: @accent-soft@;}
+
+.context-menu .separator {    -fx-padding: 4 0;}
+
+/* Separators between rows of a settings panel. JavaFX's own separators came out black in the
+   violet theme and grey in the others, which is how a divider ends up the darkest line on a
+   dark screen. */
+.separator .line {    -fx-border-color: @line@;
+    -fx-border-width: 1 0 0 0;}
+
+.separator:vertical .line {    -fx-border-color: @line@;
+    -fx-border-width: 0 1 0 0;}
+
+.chip-combo {    -fx-pref-width: 170;}
+
+.select-label {    -fx-font-size: 13px;
+    -fx-text-fill: @text-muted@;
+    -fx-font-family: "Inter SemiBold";}
+
+.switch-toggle {    
+    -fx-text-fill: @text@;
+    /* The knob, second fill, used to be a literal white. The palette has a colour for
+       "legible on something dark" - the one the launch veil uses - and the switch's track is
+       dark in all three themes, so the knob follows that instead of ignoring the palette. */
+    -fx-background-color: @line-strong@, @text-on-veil@;
+    -fx-background-insets: 0, 3 21 3 3;
+    -fx-background-radius: 11, 8;
+    -fx-border-width: 0;
+    -fx-min-width: 40;
+    -fx-max-width: 40;
+    -fx-min-height: 22;
+    -fx-max-height: 22;
+    -fx-padding: 0;
+    -fx-cursor: hand;}
+
+.switch-toggle:selected {    -fx-background-color: @ok@, @text-on-veil@;
+    -fx-background-insets: 0, 3 3 3 21;}
+
+.toggle-label {    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.toggle-sub {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.error-text {    -fx-text-fill: @danger@;}
+
+.ram-row-inline {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 0 12;
+    -fx-pref-height: 37;}
+
+.ram-value {    -fx-font-family: "JetBrains Mono Medium";
+    -fx-font-size: 16px;
+    -fx-text-fill: @accent@;}
+
+.recommended-ram-label {    -fx-font-size: 13px;
+    -fx-text-fill: @text-muted@;}
+
+.lang-toggle {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 3;}
+
+.lang-option {    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-text-fill: @text-muted@;
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-padding: 5 14;
+    -fx-cursor: hand;}
+
+.lang-option:selected {    -fx-background-color: @accent-soft@;
+    -fx-text-fill: @text@;}
+
+.theme-swatch {    -fx-background-color: transparent;
+    -fx-border-color: @line@;
+    -fx-border-width: 2;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10;
+    -fx-cursor: hand;
+    -fx-alignment: center;}
+
+.theme-swatch .label {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";}
+
+.theme-swatch.active {    -fx-border-color: @accent@;}
+
+.theme-swatch.active .label {    -fx-text-fill: @text@;}
+
+.theme-preview {    -fx-background-radius: 7;}
+
+.theme-preview.violet {    -fx-background-color: linear-gradient(to bottom right, #1b1e25 40%, #8b93ff);}
+
+.theme-preview.black {    -fx-background-color: linear-gradient(to bottom right, #000000 40%, #4a4a4a);}
+
+.theme-preview.white {    -fx-background-color: linear-gradient(to bottom right, #ffffff 40%, #cfc9ba);
+    -fx-border-color: @line@;
+    -fx-border-width: 1;}
+
+.server-row {    -fx-background-color: transparent;
+    -fx-padding: 12 4;
+    -fx-border-color: transparent transparent @line@ transparent;
+    -fx-border-width: 0 0 1 0;}
+
+.server-row:hover {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 8;}
+
+.server-row.selected {    -fx-background-color: @accent-soft@;
+    -fx-background-radius: 8;}
+
+.server-name {    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.server-sub {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.server-status-text {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.role-badge {    -fx-background-color: @accent-soft@;
+    -fx-text-fill: @accent@;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-background-radius: 5;
+    -fx-padding: 2 6;}
+
+.server-dot {    -fx-background-color: @ok@;
+    -fx-background-radius: 50%;
+    -fx-min-width: 8;
+    -fx-min-height: 8;
+    -fx-max-width: 8;
+    -fx-max-height: 8;}
+
+.server-dot.off {    -fx-background-color: @text-dim@;
+    -fx-effect: none;}
+
+.server-dot.pending {    -fx-background-color: @warn@;}
+
+.server-dot.denied {    -fx-background-color: @danger@;}
+
+/* Status text on a monitored server row. The code used to set this colour inline,
+   which meant a custom palette could not reach it and the white theme kept the
+   dark theme's green. */
+.status-online {    -fx-text-fill: @ok@;}
+
+/* ---- Friends (friend codes) ----------------------------------------------
+   One row per friend in the list, plus the card that opens under it when a row
+   is clicked (head, nick beside it, "о себе" underneath). */
+.friend-row {    -fx-background-color: transparent;
+    -fx-padding: 8 10;
+    -fx-background-radius: 8;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;}
+
+.friend-row:hover {    -fx-background-color: @surface-2@;}
+
+.friend-row.selected {    -fx-background-color: @accent-soft@;
+    -fx-border-color: @accent@;}
+
+.friend-name {    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.friend-code {    -fx-font-size: 14px;
+    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-text-fill: @text-muted@;}
+
+.friend-card {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 14;}
+
+/* The head is a 96x96 crop of the friend's skin at whole-number zoom, 8x8 -> 96x96 - the same
+   box the profile editor uses (SkinPreview.BOX). smooth="false" on the ImageView is what keeps
+   the pixel art crisp; the fallback letter sits behind the image, visible only without a skin. */
+.friend-head {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;}
+
+.friend-head-fallback {    -fx-font-size: 40px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text-dim@;}
+
+.friend-nick {    -fx-font-size: 22px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.friend-about {    -fx-font-size: 15px;
+    -fx-text-fill: @text-muted@;}
+
+/* Аватарка мода в списке внутри «карандашика» (правка сборки). Картинка с Modrinth или, пока
+   её нет, иконка-заглушка внутри той же рамки — так строки с иконкой и без неё одной высоты
+   и ничего не прыгает, когда иконка догружается. */
+.mod-avatar {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;}
+
+.mod-avatar-fallback {    -fx-icon-color: @text-dim@;}
+
+/* Приглашение в комнату: строка над списком друзей, пока на неё не ответили. Тонирована
+   акцентом, потому что это единственное, что в панели требует действия прямо сейчас. */
+.friend-invite-row {    -fx-background-color: @accent-faint@;
+    -fx-border-color: @accent-line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10 12;}
+
+/* Shown in place of "о себе" while a friend has not written one yet. */
+.friend-about.muted {    -fx-text-fill: @text-dim@;
+    -fx-font-style: italic;}
+
+/* "Сохранить" while the «о себе» text differs from what the friends currently see. */
+.secondary-button.dirty {    -fx-border-color: @accent@;}
+
+.friend-online-chip {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 999;
+    -fx-padding: 2 8;}
+
+.friend-online-chip.offline {    -fx-opacity: 0.55;}
+
+.friend-online-dot {    -fx-background-color: @ok@;
+    -fx-background-radius: 50%;
+    -fx-min-width: 7;
+    -fx-min-height: 7;
+    -fx-max-width: 7;
+    -fx-max-height: 7;}
+
+.friend-online-chip.offline .friend-online-dot {    -fx-background-color: @text-dim@;}
+
+/* On the player's own card (the "Показать профиль" button) the chip reads "это ты" instead of
+   an online state, so it is tinted with the accent rather than carrying a status colour that
+   would mean nothing about yourself. */
+.friend-online-chip.self {    -fx-background-color: @accent-soft@;}
+
+.friend-online-chip.self .friend-online-dot {    -fx-background-color: @accent@;
+    -fx-effect: none;}
+
+.friend-online-chip.self .friend-online-text {    -fx-text-fill: @accent@;}
+
+.friend-online-text {    -fx-font-size: 13px;
+    -fx-text-fill: @text-muted@;}
+
+/* The "о себе" editor. A TextArea is not a TextField: its visible interior is an
+   inner .content region with its own background, so styling the control alone
+   leaves the default white box sitting in the middle of a dark theme. */
+.about-input {    -fx-control-inner-background: @surface-2@;
+    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-prompt-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-padding: 2;}
+
+.about-input:focused {    -fx-border-color: @accent@;}
+
+.about-input .content {    -fx-background-color: @surface-2@;}
+
+.about-input .scroll-pane,
+.about-input .scroll-pane .viewport {    -fx-background-color: transparent;}
+
+.console-area {    -fx-control-inner-background: @console-bg@;
+    -fx-background-color: @console-bg@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text-muted@;
+    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-font-size: 14px;}
+
+.console-area .content {    -fx-background-color: @console-bg@;}
+
+/* Цветная консоль сервера (ui/ConsoleView, 11.10.2026): список строк поверх скрытой console-area. */
+.console-view {    -fx-background-color: @console-bg@;
+    -fx-control-inner-background: @console-bg@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 6 2 6 2;}
+
+.console-view .list-cell {    -fx-background-color: transparent;
+    -fx-padding: 0 8 0 8;}
+
+.console-view .list-cell:selected {    -fx-background-color: @accent-faint@;}
+
+.console-view .placeholder .label {    -fx-text-fill: @text-dim@;}
+
+.console-line {    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-font-size: 14px;
+    -fx-fill: @text-muted@;}
+
+.console-err {    -fx-fill: @danger-text@;}
+
+.console-warn {    -fx-fill: @warn@;}
+
+.console-join {    -fx-fill: @ok@;}
+
+.console-chat {    -fx-fill: @text@;}
+
+.console-nick {    -fx-fill: @accent-hover@;
+    -fx-underline: true;}
+
+/* Режим «Чат»: строка ввода подсвечена, чтобы не перепутать с командой. */
+.text-input.console-chat-mode,
+.text-input.console-chat-mode:focused {    -fx-border-color: @warn@;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;}
+
+.server-action.console-chat-on,
+.server-action.console-chat-on:hover {    -fx-background-color: @warn@;
+    -fx-border-color: @warn@;
+    -fx-text-fill: #1a1a1a;}
+
+.quick-cmd {    -fx-font-size: 12px;
+    -fx-padding: 4 10 4 10;}
+
+.login-code-hint {    -fx-font-size: 14px;
+    -fx-text-fill: @text-muted@;}
+
+.login-code-label {    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-font-size: 22px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @accent@;
+    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10;}
+
+.scroll-pane, .scroll-pane .viewport, .list-view {    -fx-background-color: transparent;}
+
+.scroll-bar:vertical, .scroll-bar:horizontal {    -fx-background-color: transparent;}
+
+.scroll-bar .thumb {    -fx-background-color: @line@;
+    -fx-background-radius: 4;}
+
+.scroll-bar .track {    -fx-background-color: transparent;}
+
+/* Some controls are drawn part by part, and the parts have names of their own. Left alone,
+   JavaFX paints them itself - a grey arrow button on every scroll bar, a black thumb on
+   every slider - so they are named here and given the palette's colours. */
+.scroll-bar > .increment-button,
+.scroll-bar > .decrement-button {    -fx-background-color: transparent;
+    -fx-padding: 0;}
+
+.scroll-bar > .increment-button > .increment-arrow,
+.scroll-bar > .decrement-button > .decrement-arrow {    -fx-background-color: transparent;
+    -fx-padding: 0;}
+
+.scroll-pane > .corner {    -fx-background-color: transparent;}
+
+/* The corner of a dropdown's list, which is a VirtualFlow rather than a ScrollPane - the
+   second audit run is what pointed at it, since the first rule had not covered it. */
+.list-view > .virtual-flow > .corner,
+.virtual-flow > .corner {    -fx-background-color: transparent;}
+
+.slider {    -fx-padding: 4 0;}
+
+.slider .track {    -fx-background-color: @surface-2@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 4;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-padding: 3;}
+
+.slider .thumb {    -fx-background-color: @accent@;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-padding: 7;}
+
+.slider:hover .thumb {    -fx-background-color: @accent-hover@;}
+
+.slider:focused .thumb {    -fx-border-color: @accent-hover@;
+    -fx-border-width: 2;
+    -fx-border-radius: 8;}
+
+.modal-scrim {    -fx-background-color: @scrim@;
+    -fx-alignment: center;
+    /* The margin that makes a modal "almost the whole launcher" rather than a box in the middle
+       of it - and, less obviously, the thing that keeps its text crisp. A card that fills the
+       padded area is placed at this margin (a whole number of pixels) and is the window size
+       minus twice it (also a whole number). A card centred at its own prefWidth lands on a half
+       pixel whenever the difference is odd, and half a pixel is enough for JavaFX to resample
+       every glyph inside it. The window is 1050x700 *including* its decorations, so the scene
+       really is an odd number of pixels wide - this was not a theoretical worry. */
+    -fx-padding: 22;}
+
+.modal-card {    -fx-background-color: @surface@;
+    -fx-min-height: 300;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 16;
+    -fx-border-radius: 16;}
+
+/* The palette editor itself: background colour, not panel colour. Colours are picked
+   while looking at the surface they will actually sit on. */
+.modal-card.palette-card {    -fx-background-color: @bg@;}
+
+.palette-card .modal-body {    -fx-padding: 14 20 18 20;}
+
+/* Rows of the palette editor: the colour name and its swatch, on the background. */
+.palette-card .field-label {    -fx-text-fill: @text-muted@;}
+
+.palette-card .screen-scroll,
+.palette-card .screen-scroll > .viewport {    -fx-background-color: transparent;}
+
+/* The palette's own controls, given the theme's own look.
+   
+   A note on JavaFX's default stylesheet, because it is easy to believe otherwise: MainApp
+   calls setUserAgentStylesheet(null) and this file used to say that leaves the launcher with
+   no default styling at all. Measured in the running window, it does not - the dropdown
+   arrow still came out JavaFX's white mark, the RAM slider still had JavaFX's black thumb,
+   and the progress bars JavaFX's derived blue. So a control the theme does not name is
+   painted by JavaFX: visible, but off-palette, and wrong in the white theme. Every part the
+   launcher wants to own has to be named (see also add-control-rules.py). */
+.palette-card .color-picker {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-text-fill: @text@;
+    -fx-pref-width: 260;
+    -fx-cursor: hand;}
+
+.palette-card .color-picker:hover {    -fx-border-color: @line-strong@;}
+
+.palette-card .color-picker > .label {    -fx-text-fill: @text@;}
+
+.palette-card .color-picker > .arrow-button {    -fx-background-color: transparent;}
+
+.palette-card .color-picker > .arrow-button > .arrow {    -fx-background-color: @text-muted@;}
+
+.palette-card .combo-box {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-text-fill: @text@;}
+
+.palette-card .combo-box .list-cell {    -fx-text-fill: @text@;}
+
+/* The background editor. Its preview is the largest thing on the screen on purpose:
+   a background colour is only judgeable against the panels that will sit on it, so
+   the swatch is the size of a panel rather than the size of a swatch. */
+.palette-bg-preview {    -fx-background-radius: 8;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-min-height: 96;}
+
+.palette-card .palette-hint {    -fx-text-fill: @text-dim@;
+    -fx-font-size: 14px;}
+
+/* Checkboxes, all of them. The rules live here because the palette card is the only place
+   one is used today - the tick that ties the background gradient to the background colour -
+   but there is nothing palette-specific about them: JavaFX's own checkbox is left alone by
+   this theme on purpose, so that the two do not end up looking like different applications. */
+.check-box {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-cursor: hand;}
+
+.check-box > .box {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-padding: 3;}
+
+.check-box:hover > .box {    -fx-border-color: @accent@;}
+
+.check-box:selected > .box {    -fx-background-color: @accent@;
+    -fx-border-color: @accent@;}
+
+.check-box:selected > .box > .mark {    -fx-background-color: @text-on-accent@;}
+
+.check-box:disabled {    -fx-opacity: 0.5;}
+
+.modal-header {    -fx-padding: 16 14 16 20;
+    -fx-border-color: transparent transparent @line@ transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-cursor: move;}
+
+.modal-title {    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @text@;}
+
+.modal-close {    -fx-background-color: @surface-2@;
+    -fx-text-fill: @text-muted@;
+    -fx-background-radius: 8;
+    -fx-border-width: 0;
+    -fx-min-width: 28;
+    -fx-min-height: 28;
+    -fx-max-width: 28;
+    -fx-max-height: 28;
+    -fx-cursor: hand;}
+
+.modal-close .ikonli-font-icon {    -fx-icon-color: @text-muted@;}
+
+.modal-close:hover .ikonli-font-icon {    -fx-icon-color: @text@;}
+
+.modal-body {    -fx-padding: 16 20 20 20;}
+
+.modal-create-btn {    -fx-padding: 11 24;
+    -fx-font-size: 16px;}
+
+.command-row {    -fx-padding: 0 0 10 0;
+    -fx-border-color: transparent transparent @line@ transparent;
+    -fx-border-width: 0 0 1 0;}
+
+.command-row .copy-btn {    -fx-padding: 6;
+    -fx-min-width: 30;
+    -fx-min-height: 30;}
+
+.field-label {    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text-muted@;}
+
+.share-tabs {    -fx-padding: 0 20;
+    -fx-border-color: transparent transparent @line@ transparent;
+    -fx-border-width: 0 0 1 0;}
+
+.share-tab {    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent transparent transparent;
+    -fx-border-width: 0 0 2 0;
+    -fx-text-fill: @text-muted@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 9 4;
+    -fx-cursor: hand;}
+
+.share-tab:selected {    -fx-text-fill: @text@;
+    -fx-border-color: transparent transparent @accent@ transparent;}
+
+.import-status {    -fx-font-size: 14px;
+    -fx-text-fill: @ok@;
+    -fx-wrap-text: true;}
+
+.toast-stack {    -fx-padding: 0 0 22 0;}
+
+.toast {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter Medium";
+    -fx-padding: 11 14;}
+
+.toast.toast-success {    -fx-border-color: @ok-line@;}
+
+.toast.toast-error {    -fx-border-color: @danger-line@;}
+
+/* Предупреждения и подсказки раньше рисовались с нейтральной рамкой базового правила .toast,
+   то есть визуально не отличались от сообщений об успехе — при 10 вызовах showToast(..,"warning")
+   и 9 с "info". Токены warn и accent уже есть в палитре, отдельных добавлять не пришлось. */
+.toast.toast-warning {    -fx-border-color: @warn@;}
+
+.toast.toast-info {    -fx-border-color: @accent-line@;}
+
+.app-version-label {    -fx-text-fill: @text-dim@;
+    -fx-font-size: 13px;
+    -fx-padding: 8 0 0 0;}
+
+.account-row-home {    -fx-padding: 12 16;}
+
+.account-row-home .ikonli-font-icon {    -fx-icon-color: @accent@;}
+
+.license-badge {    -fx-background-radius: 100;
+    -fx-border-radius: 100;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-padding: 3 12;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-alignment: center;}
+
+.license-badge-ok {    -fx-background-color: @ok-soft@;
+    -fx-text-fill: @ok@;}
+
+.license-badge-error {    -fx-background-color: @danger-soft@;
+    -fx-text-fill: @danger@;}
+
+.profile-license-oval {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 8 16;
+    -fx-cursor: hand;}
+
+.profile-license-oval:hover {    -fx-background-color: @line@;
+    -fx-border-color: @accent@;}
+
+.profile-name-oval {    -fx-background-color: @line@;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-background-radius: 100;
+    -fx-border-radius: 100;
+    -fx-padding: 2 10;
+    -fx-text-fill: @text@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";}
+
+.profile-preview-box {    -fx-padding: 10;
+    -fx-background-color: @surface@;
+    -fx-background-radius: 8;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;}
+
+.profile-preview {    -fx-background-color: @bg@;
+    -fx-background-radius: 8;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-min-width: 96;
+    -fx-min-height: 96;
+    -fx-alignment: center;}
+
+.profile-edit-btn {    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 8 10;
+    -fx-cursor: hand;}
+
+.profile-edit-btn:hover {    -fx-background-color: @accent-soft@;}
+
+.profile-edit-btn .ikonli-font-icon {    -fx-icon-color: @text-muted@;
+    -fx-icon-size: 15px;}
+
+.profile-edit-btn:hover .ikonli-font-icon {    -fx-icon-color: @accent@;}
+
+.profile-warning {    -fx-background-color: @danger-faint@;
+    -fx-border-color: @danger-line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 12;}
+
+.profile-warning-title {    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @danger-text@;}
+
+/* The chips a skin or a cape can be taken from: one per site, carrying that site's logo.
+   The logo is a favicon fetched at runtime, so the colour behind it cannot be a palette
+   token - a site's brand colour is not part of the theme, and the chip keeps it. */
+.source-panel {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 12;}
+
+.source-title {    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-text-fill: @text@;}
+
+.source-group {    -fx-font-size: 13px;
+    -fx-text-fill: @text-muted@;}
+
+.source-tile {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 7 10;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;}
+
+/* A chip is a toggle: hovering it hints, being chosen is what stays. The chosen site is where
+   the next skin or cape comes from, so it has to read as state, not as hover. */
+.source-tile:hover {    -fx-border-color: @accent-line@;
+    -fx-background-color: @hover-veil@;}
+
+.source-tile:selected {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.source-tile:selected .source-name {    -fx-text-fill: @accent@;}
+
+.source-tile:disabled {    -fx-opacity: 0.5;}
+
+.source-mark {    -fx-background-radius: 7;
+    -fx-alignment: center;}
+
+.source-monogram {    -fx-font-family: "Inter Bold";}
+
+.source-name {    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.source-sub {    -fx-font-size: 11px;
+    -fx-text-fill: @text-dim@;}
+
+.source-tile:hover .source-sub,
+.source-tile:selected .source-sub {    -fx-text-fill: @text-muted@;}
+
+.launch-overlay {    -fx-background-color: transparent;}
+
+.launch-flood {    -fx-background-color: @accent@;
+    -fx-opacity: 0;}
+
+.launch-caption {    -fx-text-fill: @text-on-veil@;
+    -fx-font-size: 15px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-background-color: @launch-veil@;
+    -fx-background-radius: 20;
+    -fx-padding: 9 20;
+    -fx-translate-y: -40;
+    -fx-opacity: 0;}
+
+/* --- Rail: the current profile at the bottom (head + nickname) --- */
+.rail-head {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 6;}
+
+.rail-head-fallback {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";}
+
+.rail-profile .rail-label {    -fx-font-size: 11px;}
+
+/* --- Friend profile window: the skin at full height --- */
+.friend-body {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 10;
+    -fx-border-color: @line@;
+    -fx-border-radius: 10;}
+
+/* --- Tools screen --- */
+.tool-card {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-padding: 18;
+    -fx-cursor: hand;}
+
+.tool-card:hover {    -fx-background-color: @surface-2@;
+    -fx-border-color: @accent-line@;}
+
+.tool-card.soon {    -fx-cursor: default;
+    -fx-opacity: 0.62;}
+
+.tool-card.soon:hover {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;}
+
+.tool-card-icon {    -fx-icon-color: @accent-hover@;}
+
+.tool-card-title {    -fx-text-fill: @text@;
+    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";}
+
+.tool-soon-chip {    -fx-background-color: @accent-soft@;
+    -fx-background-radius: 999;
+    -fx-text-fill: @accent-hover@;
+    -fx-padding: 2 9;
+    -fx-font-size: 11px;
+    -fx-font-family: "Inter SemiBold";}
+
+/* --- Settings: background tiles (ui/BackgroundPicker) --- */
+.bg-tile {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 2;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;}
+
+.bg-tile:hover {    -fx-border-color: @line-strong@;}
+
+.bg-tile.active {    -fx-border-color: @accent@;}
+
+.bg-tile.add {    -fx-border-style: segments(5, 4);}
+
+.bg-tile-text {    -fx-text-fill: @text-muted@;
+    -fx-font-size: 12px;}
+
+.bg-tile-remove {    -fx-background-color: @scrim@;
+    -fx-background-radius: 999;
+    -fx-padding: 3;
+    -fx-cursor: hand;}
+
+.bg-tile-remove .ikonli-font-icon {    -fx-icon-color: @text-on-veil@;
+    -fx-icon-size: 11px;}
+
+/* --- Item studio --- */
+.studio-tile {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 7;
+    -fx-border-color: @line@;
+    -fx-border-radius: 7;
+    -fx-cursor: hand;}
+
+.studio-tile:hover {    -fx-border-color: @accent@;}
+
+.status-error {    -fx-text-fill: @danger-text@;}
+
+.studio-list {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 8;
+    -fx-border-color: @line@;
+    -fx-border-radius: 8;
+    -fx-padding: 2;}
+
+.studio-list .list-cell {    -fx-background-color: transparent;
+    -fx-text-fill: @text@;
+    -fx-padding: 5 8;}
+
+.studio-list .list-cell:filled:hover {    -fx-background-color: @hover-veil@;}
+
+.studio-list .list-cell:filled:selected {    -fx-background-color: @accent-soft@;
+    -fx-text-fill: @accent-hover@;}
+
+/* --- Profiles screen --- */
+.profile-row {    -fx-padding: 8 10;
+    -fx-background-radius: 10;}
+
+.profile-row:hover {    -fx-background-color: @hover-veil@;}
+
+.profile-row-current {    -fx-background-color: @accent-soft@;}
+
+
+/* =============================================================================
+   Linear layer (redesign 2026-10). Calm shell, hairlines instead of fills, one accent
+   reserved for the primary action, focus and selection. Colour comes from the palette.
+   ============================================================================= */
+
+.rail {    -fx-background-color: @bg@;
+    -fx-border-color: transparent @line@ transparent transparent;}
+
+.rail-brand {    -fx-background-color: transparent;}
+
+.rail-btn {    -fx-background-radius: 8;
+    -fx-padding: 8 4;}
+
+.rail-btn:hover {    -fx-background-color: @hover-veil@;}
+
+.rail-btn:selected {    -fx-background-color: @surface-2@;}
+
+.rail-btn:selected .rail-icon {    -fx-icon-color: @accent@;}
+
+.rail-btn:selected .rail-label {    -fx-text-fill: @text@;}
+
+.rail-label {    -fx-font-size: 12px;
+    -fx-font-family: "Inter Medium";}
+
+.screen {    -fx-padding: 28 36 32 36;}
+
+/* Home in a short window: it does not scroll, so it tightens to fit (see MainController). */
+.screen.home-tight {    -fx-padding: 16 36 16 36;}
+
+.page-title {    -fx-font-size: 24px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-font-weight: normal;}
+
+.page-sub {    -fx-font-size: 14px;}
+
+.panel {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;}
+
+.panel-title {    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-font-weight: normal;
+    -fx-text-fill: @text-muted@;}
+
+.toggle-label {    -fx-font-size: 15px;
+    -fx-font-family: "Inter Medium";}
+
+.toggle-sub {    -fx-font-size: 13px;}
+
+/* buttons: quiet by default, the hairline brightens on hover; colour is for the main action */
+.secondary-button, .server-action, .share-trigger-btn, .copy-btn {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-font-family: "Inter Medium";
+    -fx-font-size: 14px;}
+
+.secondary-button:hover, .server-action:hover, .share-trigger-btn:hover, .copy-btn:hover {    -fx-background-color: @hover-veil@, @surface-2@;
+    -fx-border-color: @line-strong@;}
+
+.secondary-button:pressed, .server-action:pressed, .share-trigger-btn:pressed, .copy-btn:pressed {    -fx-background-color: @surface@;}
+
+.play-btn {    -fx-background-color: @grad-play@;
+    -fx-text-fill: @text-on-accent@;
+    -fx-font-family: "Inter SemiBold";
+    -fx-font-weight: normal;
+    -fx-font-size: 17px;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 14 24;}
+
+.play-btn:hover {    -fx-translate-y: 0;
+    -fx-background-color: @accent-hover@;}
+
+.play-btn:pressed {    -fx-background-color: @accent@;}
+
+.play-strip > .track, .play-strip > .bar {    -fx-background-radius: 0 0 8 8;}
+
+.input-field, .text-input, .search-input {    -fx-background-color: @surface@;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-font-size: 14px;}
+
+.input-field:hover, .text-input:hover, .search-input:hover {    -fx-border-color: @line-strong@;}
+
+.input-field:focused, .text-input:focused, .search-input:focused {    -fx-border-color: @accent@;}
+
+.combo-box {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;}
+
+.combo-box:hover {    -fx-border-color: @line-strong@;}
+
+.combo-box:focused {    -fx-border-color: @accent@;}
+
+.combo-box .list-cell {    -fx-font-size: 14px;
+    -fx-font-family: "Inter Medium";}
+
+/* the switch: accent when on, a surface-coloured knob in every theme */
+.switch-toggle {    -fx-background-color: @line-strong@, @surface@;}
+
+.switch-toggle:selected {    -fx-background-color: @accent@, @text-on-accent@;}
+
+.lang-toggle {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;}
+
+.lang-option {    -fx-font-family: "Inter Medium";
+    -fx-font-weight: normal;
+    -fx-font-size: 13px;}
+
+.lang-option:selected {    -fx-background-color: @surface@;
+    -fx-text-fill: @text@;}
+
+.build-card {    -fx-background-color: @surface@;
+    -fx-border-color: @line@;}
+
+.build-card:hover {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line-strong@;}
+
+.build-card.selected {    -fx-background-color: @accent-faint@, @surface@;
+    -fx-border-color: @accent-line@;}
+
+.tool-card:hover {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line-strong@;}
+
+.locked-chip {    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 5 10;}
+
+.modal-card {    -fx-background-radius: 12;
+    -fx-border-radius: 12;}
+
+.theme-preview.violet {    -fx-background-color: linear-gradient(to bottom right, #0F1011 45%, #7B6EF6);}
+
+.theme-preview.black {    -fx-background-color: linear-gradient(to bottom right, #000000 45%, #3A3A3A);}
+
+.theme-preview.white {    -fx-background-color: linear-gradient(to bottom right, #FFFFFF 45%, #D9D6FB);}
+
+.theme-swatch {    -fx-border-width: 1;}
+
+.theme-swatch.active {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-faint@;}
+
+/* scrollbars belong to the design too: thin, quiet, no arrows */
+.scroll-bar {    -fx-background-color: transparent;}
+
+.scroll-bar .thumb {    -fx-background-color: @line-strong@;
+    -fx-background-radius: 8;}
+
+.scroll-bar .increment-button, .scroll-bar .decrement-button {    -fx-padding: 0;
+    -fx-pref-height: 0;
+    -fx-pref-width: 0;}
+
+.scroll-bar:vertical {    -fx-pref-width: 8;}
+
+.scroll-bar:horizontal {    -fx-pref-height: 8;}
+
+.rail {    -fx-padding: 18 8 18 8;}
+
+/* explanations never run into the switch or button at the end of their row */
+.toggle-sub {    -fx-padding: 0 20 0 0;}
+
+/* the accent marker on the rail, moved by ui/Motion.moveMarker */
+.rail-marker {    -fx-background-color: @accent@;
+    -fx-background-radius: 2;}
+
+.theme-preview.violet {    -fx-background-color: linear-gradient(to bottom right, #120F1B 45%, #8D6BFA);}
+
+.rail {    -fx-padding: 18 6 18 6;}
+
+.theme-preview.violet {    -fx-background-color: linear-gradient(to bottom right, #1A1626 45%, #8D6BFA);}
+
+.theme-preview.white {    -fx-background-color: linear-gradient(to bottom right, #F3F6FB 45%, #B9C6EE);}
+
+/* the help line over the 3D view sits on its own plate, readable over any scene */
+.studio-hint {    -fx-background-color: @scrim@;
+    -fx-background-radius: 8;
+    -fx-text-fill: @text-on-veil@;
+    -fx-padding: 6 10;}
+
+/* the tile in hand: what a right click in the studio places */
+.studio-tile.in-hand {    -fx-border-color: @accent@;
+    -fx-border-width: 2;
+    -fx-background-color: @accent-faint@, @surface-2@;}
+
+/* resizable panels (studio, skin editor): the gap between panels is the handle */
+.panel-split {    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-box-border: transparent;}
+
+.panel-split > .split-pane-divider {    -fx-background-color: transparent;
+    -fx-padding: 0 5 0 5;}
+
+.panel-split:vertical > .split-pane-divider {    -fx-padding: 5 0 5 0;}
+
+.panel-split > .split-pane-divider:hover {    -fx-background-color: @accent-soft@;
+    -fx-background-radius: 4;}
+
+/* split handles: a wide grab area with a visible grip in the middle (the divider's own grabber) */
+.panel-split > .split-pane-divider {    -fx-padding: 0 7 0 7;
+    -fx-background-color: transparent;}
+
+.panel-split:vertical > .split-pane-divider {    -fx-padding: 10 0 10 0;}
+
+.panel-split > .split-pane-divider > .vertical-grabber {    -fx-background-color: @line-strong@;
+    -fx-background-radius: 2;
+    -fx-padding: 2 18 2 18;}
+
+.panel-split > .split-pane-divider > .horizontal-grabber {    -fx-background-color: @line-strong@;
+    -fx-background-radius: 2;
+    -fx-padding: 18 2 18 2;}
+
+.panel-split > .split-pane-divider:hover {    -fx-background-color: @accent-soft@;
+    -fx-background-radius: 4;}
+
+.panel-split > .split-pane-divider:hover > .vertical-grabber,
+.panel-split > .split-pane-divider:hover > .horizontal-grabber {    -fx-background-color: @accent@;}
+
+/* The skin editor's chosen tool: filled with the accent so it is plain which one is in hand. */
+.skin-tool:selected,
+.skin-tool:selected:hover {    -fx-background-color: @accent@;
+    -fx-border-color: @accent@;}
+
+.skin-tool:selected .ikonli-font-icon,
+.skin-tool:selected:hover .ikonli-font-icon {    -fx-icon-color: white;}
+
+/* The studio's glow colour: the palette editor's colour picker, in the theme's colours. */
+.studio-color {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 2 4;}
+
+.studio-color:hover {    -fx-border-color: @line-strong@;}
+
+.studio-color > .label {    -fx-text-fill: @text@;}
+
+.studio-color > .arrow-button {    -fx-background-color: transparent;}
+
+.studio-color > .arrow-button > .arrow {    -fx-background-color: @text-muted@;}
+
+/* Окна-вопросы (Alert). JavaFX отдаёт диалогу стили окна-владельца, и .root красил его фон в @bg@,
+   а текст оставался стандартным тёмным — тёмное на тёмном, 13.10.2026 так выглядело окно «Игра ещё
+   скачивается». Правил для диалогов не было вовсе, поэтому так же выглядели и все прочие вопросы. */
+.dialog-pane {    -fx-background-color: @surface@;}
+
+.dialog-pane > .header-panel {    -fx-background-color: @surface-2@;
+    -fx-border-color: transparent transparent @line@ transparent;}
+
+.dialog-pane > .header-panel .label,
+.dialog-pane > .content,
+.dialog-pane > .content .label,
+.dialog-pane .label {    -fx-text-fill: @text@;}
+
+.dialog-pane > .button-bar > .container {    -fx-background-color: transparent;}
+
+.dialog-pane .button {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 8;
+    -fx-border-color: @line-strong@;
+    -fx-border-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;}
+
+.dialog-pane .button:hover {    -fx-background-color: @accent-soft@;}
+
+.dialog-pane .button:default {    -fx-background-color: @accent@;
+    -fx-border-color: @accent@;
+    -fx-text-fill: @text-on-accent@;}
+
+.dialog-pane .button:default:hover {    -fx-background-color: @accent-hover@;}

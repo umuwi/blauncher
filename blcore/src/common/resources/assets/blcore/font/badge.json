@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "blcore:font/badge.png",
+      "ascent": 8,
+      "height": 9,
+      "chars": [
+        "\ue0b1"
+      ]
+    }
+  ]
+}

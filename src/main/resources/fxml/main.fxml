@@ -1,0 +1,1400 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import javafx.scene.shape.SVGPath?>
+
+<!--
+  BLauncher main window - rebuilt around the "icon rail + screens" layout
+  from blauncher-ui-concept-2-1.html, replacing the previous sidebar+TabPane
+  layout. One StackPane holds every top-level "screen" (Home / Builds / Mods
+  / Server / Server-Advanced / Server-Detail / Settings); MainController
+  shows exactly one at a time by toggling visible+managed together, mirroring
+  the concept's .view/.view.active CSS classes - see goToView(String) in
+  MainController.
+
+  Modals (create build, create server, import/export, add plugin) and the
+  toast stack live in overlayLayer at the end of this file, on top of
+  whichever screen is active - see the modal helpers in MainController.
+-->
+<!-- No stylesheets="@..." here on purpose: the active theme is managed as a single
+     Scene-level stylesheet (see MainApp + MainController.applyTheme()) so switching
+     theme means swapping exactly one stylesheet. A node-level one here as well used
+     to pin theme.css permanently over whatever the Scene's was switched to. -->
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="com.example.launcher.controller.MainController"
+           minWidth="1000" minHeight="650"
+           prefWidth="1280" prefHeight="800">
+
+    <fx:define>
+        <ToggleGroup fx:id="navToggleGroup"/>
+        <ToggleGroup fx:id="langToggleGroup"/>
+        <ToggleGroup fx:id="shareTabToggleGroup"/>
+        <ToggleGroup fx:id="serverTypeToggleGroup"/>
+        <ToggleGroup fx:id="vpsAuthToggleGroup"/>
+    </fx:define>
+
+    <Region fx:id="backgroundView" styleClass="app-background"/>
+
+    <HBox styleClass="app-root">
+
+        <!-- ================= ICON RAIL ================= -->
+        <VBox styleClass="rail" alignment="TOP_CENTER" spacing="6" prefWidth="104" minWidth="104" maxWidth="104">
+            <padding>
+                <Insets top="18" right="0" bottom="18" left="0"/>
+            </padding>
+            <StackPane styleClass="rail-brand" prefWidth="48" prefHeight="48" maxWidth="48" maxHeight="48" minWidth="48" minHeight="48"
+                       onMouseClicked="#onOpenSite">
+                <!-- The rail slot is 34px, so it loads an asset that is exactly
+                     34px. It used to point at the 1254x1254 logo.png and let
+                     JavaFX downscale it on every layout pass, which is what made
+                     the mark look soft. The full-size logo.png is still what the
+                     window icon uses; logo-68/logo-136 are there for larger uses. -->
+                <ImageView fitHeight="34" fitWidth="34" preserveRatio="true">
+                    <image><Image url="@/images/logo-34.png"/></image>
+                </ImageView>
+            </StackPane>
+
+            <!-- the accent marker that slides to the selected item (ui/Motion.moveMarker) -->
+            <Region fx:id="railMarker" styleClass="rail-marker" managed="false" opacity="0"
+                    minWidth="3" prefWidth="3" maxWidth="3" minHeight="22" prefHeight="22" maxHeight="22"/>
+            <ToggleButton fx:id="navHomeButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          selected="true" maxWidth="Infinity" onAction="#onNavHome">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-home" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%nav_home" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <!-- Профили — второй пункт: кто играет, выбирают раньше всего остального. Отдельный
+                 экран, а не голова с ником внизу рельса: ники в 94 px не помещались. -->
+            <ToggleButton fx:id="navProfilesButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onOpenProfiles">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-user" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%profiles_btn" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <ToggleButton fx:id="navBuildsButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavBuilds">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-grid" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%nav_builds_l1" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <ToggleButton fx:id="navModsButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavMods">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-box" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%mods_title" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <!-- Playing with friends is a primary action, not a panel buried in the server
+                 screen: the room, the internet tunnel and the address a friend needs all
+                 live on this screen now (they used to be split across two of them). -->
+            <ToggleButton fx:id="navFriendsButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavFriends">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-users" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%nav_friends" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <ToggleButton fx:id="navServerButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavServer">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-server" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%server_title" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <ToggleButton fx:id="navToolsButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavTools">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-tool" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%nav_tools" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+            <ToggleButton fx:id="navSettingsButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavSettings">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-settings" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%settings_title" styleClass="rail-label"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
+
+            <Region VBox.vgrow="ALWAYS"/>
+
+            <Button styleClass="rail-account" onAction="#onOpenTelegram">
+                <graphic>
+                    <SVGPath fill="#2AABEE" scaleX="0.8" scaleY="0.8"
+                             content="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                </graphic>
+                <tooltip>
+                    <Tooltip text="Telegram-канал BLauncher"/>
+                </tooltip>
+            </Button>
+        </VBox>
+
+        <!-- ================= SCREEN STACK ================= -->
+        <StackPane HBox.hgrow="ALWAYS" styleClass="content-area">
+
+            <!--  ==  HOME  ==  -->
+            <ScrollPane fx:id="screenHome" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true">
+                <VBox styleClass="screen" spacing="18">
+                    <HBox spacing="14" alignment="CENTER_LEFT">
+                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                            <Label fx:id="homeTitleLabel" text="%play_btn" styleClass="page-title"/>
+                            <Label fx:id="homeSubLabel" text="%home_sub" styleClass="page-sub"/>
+                        </VBox>
+                    </HBox>
+
+                    <HBox spacing="10" alignment="TOP_LEFT">
+                        <!-- Vanilla quick-pick lives outside the ScrollPane so it stays put
+                             while the recent-builds strip beside it scrolls horizontally. -->
+                        <StackPane fx:id="homeVanillaCardHolder"/>
+                        <ScrollPane fx:id="homeBuildScroll" styleClass="build-scroll" fitToHeight="true"
+                                    hbarPolicy="NEVER" vbarPolicy="NEVER" pannable="true" HBox.hgrow="ALWAYS">
+                            <HBox fx:id="homeBuildGrid" styleClass="build-grid" spacing="10"/>
+                        </ScrollPane>
+                    </HBox>
+
+                    <VBox fx:id="currentBuildPanel" styleClass="panel, current-build-panel" spacing="12">
+                        <Label text="%current_build_title" styleClass="panel-title"/>
+                        <HBox spacing="14" alignment="CENTER_LEFT">
+                            <StackPane fx:id="selectedIcon" styleClass="build-icon-lg">
+                                <Label fx:id="selectedIconLabel" styleClass="build-icon-label"/>
+                            </StackPane>
+                            <VBox spacing="3" HBox.hgrow="ALWAYS">
+                                <Label fx:id="selectedName" styleClass="selected-name"/>
+                                <Label fx:id="selectedSub" styleClass="selected-sub" wrapText="true"/>
+                            </VBox>
+                            <Hyperlink fx:id="allBuildsLink" text="%builds_title" styleClass="all-builds-link" onAction="#onNavBuilds"/>
+                        </HBox>
+
+                        <HBox fx:id="lockedMetaRow" spacing="10" visible="false" managed="false">
+                            <HBox styleClass="locked-chip" spacing="6" alignment="CENTER_LEFT">
+                                <FontIcon iconLiteral="fth-lock" iconSize="12"/>
+                                <Label fx:id="selectedVersionChip"/>
+                            </HBox>
+                            <HBox styleClass="locked-chip" spacing="6" alignment="CENTER_LEFT">
+                                <FontIcon iconLiteral="fth-lock" iconSize="12"/>
+                                <Label fx:id="selectedLoaderChip"/>
+                            </HBox>
+                        </HBox>
+
+                        <!-- Режим сервера (11.10.2026): выбрана плитка сервера — вместо версии выбор сборки,
+                             с которой на него заходить; «Без модов и сборок» оставляет выбор версии ниже. -->
+                        <HBox spacing="10">
+                            <HBox fx:id="serverMetaRow" visible="false" managed="false">
+                                <ComboBox fx:id="homeServerBuildCombo" styleClass="combo-box, chip-combo" minWidth="230" onAction="#onHomeServerBuildSelected"/>
+                            </HBox>
+                            <HBox fx:id="editableMetaRow" spacing="10" visible="false" managed="false">
+                                <ComboBox fx:id="homeVanillaVersionCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaVersionSelected"/>
+                                <ComboBox fx:id="homeVanillaLoaderCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaLoaderSelected"/>
+                            </HBox>
+                        </HBox>
+                        <Label fx:id="homeServerHint" styleClass="selected-sub" wrapText="true" visible="false" managed="false"/>
+                    </VBox>
+
+                    <HBox fx:id="homeAccountRow" styleClass="panel, account-row-home" spacing="10" alignment="CENTER_LEFT">
+                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                            <Label text="ИМЯ ИГРОКА" styleClass="select-label"/>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <TextField fx:id="homeUsernameField" styleClass="input-field" promptText="Имя игрока" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                                <Button fx:id="homeMicrosoftLoginButton" styleClass="secondary-button"
+                                        contentDisplay="LEFT" graphicTextGap="8" onAction="#onMicrosoftLogin">
+                                    <graphic><FontIcon fx:id="homeAccountIcon" iconLiteral="fth-log-in" iconSize="14"/></graphic>
+                                </Button>
+                            </HBox>
+                            <Label fx:id="homeAccountLabel" styleClass="license-badge" text="">
+                                <VBox.margin>
+                                    <Insets top="8" right="0" bottom="0" left="0"/>
+                                </VBox.margin>
+                            </Label>
+                        </VBox>
+                    </HBox>
+
+                    <!-- Pushes the Play block to the bottom of the window: on a big or full-screen
+                         window it sat in the middle with empty space under it. -->
+                    <Region VBox.vgrow="ALWAYS" minHeight="8"/>
+
+                    <!-- The action and its progress are one element: the bar is a strip along
+                         the bottom edge of the button, not a control off to its right. The
+                         node ids are unchanged, so the launch flow keeps driving them. -->
+                    <VBox styleClass="play-block" spacing="8">
+                        <StackPane alignment="CENTER">
+                            <Button fx:id="playButton" text="%play_btn" styleClass="play-btn"
+                                    onAction="#onLaunch" maxWidth="Infinity"/>
+                            <!-- the Play ripple draws here (ui/Motion.ripple), over the button, under the strip -->
+                            <Pane fx:id="playRippleLayer" mouseTransparent="true" maxWidth="Infinity" maxHeight="Infinity"/>
+                            <ProgressBar fx:id="launchProgressBar" styleClass="launch-progress, play-strip"
+                                         maxWidth="Infinity" progress="0" visible="false" managed="false"
+                                         StackPane.alignment="BOTTOM_CENTER"/>
+                        </StackPane>
+                        <HBox spacing="12" alignment="CENTER_LEFT">
+                            <Label fx:id="playHint" text="%play_hint" styleClass="play-hint"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button fx:id="stopButton" text="%stop_btn" styleClass="danger-button"
+                                    onAction="#onStopGame" disable="true"/>
+                        </HBox>
+                        <Label fx:id="homeStatusLabel" styleClass="status-text" wrapText="true"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  PROFILES  ==  -->
+            <ScrollPane fx:id="screenProfiles" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <HBox spacing="14" alignment="CENTER_LEFT">
+                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                            <Label text="%profiles_title" styleClass="page-title"/>
+                            <Label text="%profiles_sub" styleClass="page-sub"/>
+                        </VBox>
+                        <Button fx:id="addProfileButton" text="%add_profile_btn" styleClass="secondary-button"
+                                onAction="#onShowAddProfile" contentDisplay="LEFT" graphicTextGap="6">
+                            <graphic><FontIcon iconLiteral="fth-user-plus" iconSize="14"/></graphic>
+                        </Button>
+                    </HBox>
+                    <VBox fx:id="profilesList" styleClass="panel" spacing="8"/>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  BUILDS  ==  -->
+            <ScrollPane fx:id="screenBuilds" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <HBox alignment="TOP_LEFT" spacing="14">
+                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                            <Label fx:id="buildsTitleLabel" text="%builds_title" styleClass="page-title"/>
+                            <Label text="%builds_sub" styleClass="page-sub"/>
+                        </VBox>
+                        <Button text="%import_btn" styleClass="share-trigger-btn" onAction="#onOpenImport" contentDisplay="LEFT" graphicTextGap="6">
+                            <graphic><FontIcon iconLiteral="fth-download" iconSize="14"/></graphic>
+                        </Button>
+                        <Button text="%export_btn" styleClass="share-trigger-btn" onAction="#onOpenExport" contentDisplay="LEFT" graphicTextGap="6">
+                            <graphic><FontIcon iconLiteral="fth-upload" iconSize="14"/></graphic>
+                        </Button>
+                    </HBox>
+
+                    <HBox spacing="8">
+                        <ComboBox fx:id="buildsSortCombo" styleClass="combo-box, chip-combo" onAction="#onBuildsSortChanged"/>
+                        <ComboBox fx:id="buildsLoaderFilterCombo" styleClass="combo-box, chip-combo" onAction="#onBuildsFilterChanged"/>
+                    </HBox>
+
+                    <FlowPane fx:id="allBuildsGrid" styleClass="build-grid" hgap="10" vgap="10"/>
+                    <Label fx:id="buildsEmptyStateLabel" styleClass="empty-state-label" visible="false" managed="false"
+                           text="%empty_builds"/>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  FRIENDS (play together: overlay network, tunnel, invitation)  ==  -->
+            <ScrollPane fx:id="screenFriends" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <VBox spacing="4">
+                        <Label fx:id="friendsTitleLabel" text="%nav_friends" styleClass="page-title"/>
+                        <Label text="%friends_sub" styleClass="page-sub"/>
+                    </VBox>
+
+                    <!--  ==  FRIENDS (by friend code)  ==
+                         Первым блоком: сюда приходят, чтобы добавить человека по коду и посмотреть,
+                         кто уже в друзьях. Карточка выбранного друга — голова, ник правее неё и
+                         «о себе» под ником. Кнопка «Профиль» — своя карточка, справа в заголовке
+                         панели, рядом с «Обновить». -->
+                    <VBox fx:id="friendsPanel" styleClass="panel" spacing="12">
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <Label text="%friends_list_title" styleClass="panel-title"/>
+                            <Label fx:id="friendsCountLabel" text="" styleClass="toggle-sub"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="friendsStatusLabel" text="" styleClass="toggle-sub"/>
+                            <Button fx:id="friendsRefreshBtn" text="%friends_refresh_btn" styleClass="copy-btn" onAction="#onRefreshFriends"/>
+                            <Button fx:id="myProfileBtn" text="%friends_profile_btn" styleClass="secondary-button"
+                                    onAction="#onShowMyProfile" contentDisplay="LEFT" graphicTextGap="6">
+                                <graphic><FontIcon iconLiteral="fth-user" iconSize="14"/></graphic>
+                            </Button>
+                        </HBox>
+
+                        <!-- Приглашения в комнаты ZeroTier: блок появляется, только когда есть
+                             непрочитанные приглашения. Кнопка «Пригласить» есть у каждого друга
+                             в списке ниже. -->
+                        <VBox fx:id="friendInvitesBox" spacing="6" visible="false" managed="false">
+                            <Label text="%friends_invites_title" styleClass="toggle-label"/>
+                            <VBox fx:id="friendInvitesList" spacing="6"/>
+                        </VBox>
+
+                        <VBox spacing="6">
+                            <Label text="%friends_add_label" styleClass="toggle-label"/>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <TextField fx:id="friendCodeInput" styleClass="text-input, mono"
+                                           promptText="%friends_add_placeholder" HBox.hgrow="ALWAYS"
+                                           onAction="#onAddFriendByCode"/>
+                                <Button fx:id="friendAddBtn" text="%friends_add_btn" styleClass="server-action"
+                                        onAction="#onAddFriendByCode"/>
+                            </HBox>
+                            <Label text="%friends_add_hint" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+
+                        <VBox spacing="2">
+                            <Label text="%friends_list_heading" styleClass="toggle-label"/>
+                            <VBox fx:id="friendsListBox" spacing="4"/>
+                            <Label fx:id="friendsEmptyLabel" text="%friends_empty" styleClass="empty-state-label" wrapText="true"/>
+                        </VBox>
+
+                    </VBox>
+
+                    <!-- Play together: ZeroTier overlay network ("rooms" for LAN-style play over
+                         the internet - no launcher-managed dedicated server required). Идёт после
+                         друзей: свой круг общения открывают чаще, чем комнату. -->
+                    <VBox fx:id="ztPanel" styleClass="panel" spacing="10">
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <Label text="%zt_title" styleClass="panel-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button fx:id="ztPowerBtn" text="%zt_enable_btn" styleClass="server-action" onAction="#onZeroTierPowerToggle"/>
+                            <Button fx:id="ztInstallBtn" text="%zt_install_btn" styleClass="copy-btn" onAction="#onZeroTierInstall" visible="false" managed="false"/>
+                            <Button fx:id="ztRefreshBtn" text="%zt_refresh_btn" styleClass="copy-btn" onAction="#onZeroTierRefresh"/>
+                        </HBox>
+                        <Label fx:id="ztStatusLabel" text="%zt_status_checking" styleClass="toggle-sub" wrapText="true"/>
+                        <!-- Адрес, по которому друг заходит в твой мир: IP в комнате ZeroTier
+                             (или в домашней сети), пока локальный сервер запущен. Раньше это
+                             лежало в блоке «Доступ из интернета», рядом с тумблером playit.gg,
+                             который ничего не делал сам — см. историю в комментарии ниже. -->
+                        <VBox fx:id="localAddressBox" spacing="4" visible="false" managed="false">
+                            <Label text="%friends_address_label" styleClass="toggle-label"/>
+                            <HBox spacing="8">
+                                <TextField fx:id="localAddressField" styleClass="text-input, mono" editable="false" HBox.hgrow="ALWAYS"/>
+                                <Button text="%copy_btn" styleClass="copy-btn" onAction="#onCopyLocalAddress"/>
+                            </HBox>
+                        </VBox>
+                        <HBox fx:id="ztAddressRow" spacing="8" visible="false" managed="false" alignment="CENTER_LEFT">
+                            <Label text="%zt_my_address" styleClass="toggle-sub"/>
+                            <TextField fx:id="ztAddressField" styleClass="text-input, mono" editable="false" HBox.hgrow="ALWAYS"/>
+                            <Button text="%copy_btn" styleClass="copy-btn" onAction="#onCopyZeroTierAddress"/>
+                        </HBox>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <TextField fx:id="ztJoinField" styleClass="text-input, mono" promptText="%zt_join_placeholder" HBox.hgrow="ALWAYS" onAction="#onZeroTierJoin"/>
+                            <Button fx:id="ztJoinBtn" text="%zt_join_btn" styleClass="server-action" onAction="#onZeroTierJoin"/>
+                        </HBox>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <TextField fx:id="ztNameField" styleClass="text-input" promptText="%zt_name_placeholder" HBox.hgrow="ALWAYS"/>
+                            <ComboBox fx:id="ztTypeCombo" styleClass="combo-box" maxWidth="Infinity" prefWidth="220"/>
+                            <Button fx:id="ztCreateBtn" text="%zt_create_btn" styleClass="server-action" onAction="#onZeroTierCreateRoom"/>
+                        </HBox>
+                        <Label fx:id="ztRoomsTitle" text="%zt_rooms_title" styleClass="toggle-sub"/>
+                        <VBox fx:id="ztRoomsBox" spacing="4"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  MODS  ==  -->
+            <ScrollPane fx:id="screenMods" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="12">
+                    <VBox spacing="4">
+                        <Label fx:id="modsTitleLabel" text="%mods_title" styleClass="page-title"/>
+                        <Label text="%mods_sub" styleClass="page-sub"/>
+                    </VBox>
+                    <HBox spacing="8">
+                        <TextField fx:id="modsSearchField" styleClass="search-input" promptText="Найти мод в сборке или на Modrinth..." HBox.hgrow="ALWAYS"/>
+                        <ComboBox fx:id="modsContentTypeCombo" styleClass="combo-box, chip-combo"/>
+                        <ComboBox fx:id="modsVersionFilterCombo" styleClass="combo-box, chip-combo"/>
+                        <ComboBox fx:id="modsLoaderFilterCombo" styleClass="combo-box, chip-combo"/>
+                        <Button fx:id="modsSearchButton" styleClass="secondary-button" onAction="#onSearch">
+                            <graphic><FontIcon iconLiteral="fth-search" iconSize="14"/></graphic>
+                        </Button>
+                        <Button fx:id="modsImportPackBtn" text="Импорт .mrpack" styleClass="secondary-button"
+                                onAction="#onImportMrpack"/>
+                    </HBox>
+                    <VBox fx:id="modsListPanel" styleClass="panel" spacing="0"/>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  SERVER (quick screen: local server + list entry point)  ==  -->
+            <ScrollPane fx:id="screenServer" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <VBox spacing="4">
+                        <Label fx:id="serverTitleLabel" text="%server_title" styleClass="page-title"/>
+                        <Label text="%server_sub" styleClass="page-sub"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="12">
+                        <Label text="%local_server_title" styleClass="panel-title"/>
+                        <HBox spacing="10" alignment="BOTTOM_LEFT">
+                            <VBox spacing="6" HBox.hgrow="ALWAYS">
+                                <Label text="%label_build" styleClass="select-label"/>
+                                <ComboBox fx:id="serverBuildCombo" styleClass="combo-box" maxWidth="Infinity" onAction="#onServerBuildSelected"/>
+                            </VBox>
+                            <Button fx:id="serverStartBtn" text="%start_btn" styleClass="server-action" onAction="#onToggleLocalServer"/>
+                        </HBox>
+
+                        <HBox fx:id="serverLockedMetaRow" spacing="10">
+                            <HBox styleClass="locked-chip" spacing="6" alignment="CENTER_LEFT">
+                                <FontIcon iconLiteral="fth-lock" iconSize="12"/>
+                                <Label fx:id="serverVersionChip"/>
+                            </HBox>
+                            <HBox styleClass="locked-chip" spacing="6" alignment="CENTER_LEFT">
+                                <FontIcon iconLiteral="fth-lock" iconSize="12"/>
+                                <Label fx:id="serverLoaderChip"/>
+                            </HBox>
+                        </HBox>
+
+                        <HBox fx:id="serverEditableMetaRow" spacing="10" visible="false" managed="false">
+                            <ComboBox fx:id="serverVanillaVersionCombo" styleClass="combo-box, chip-combo" onAction="#onServerVanillaVersionSelected"/>
+                            <ComboBox fx:id="serverVanillaLoaderCombo" styleClass="combo-box, chip-combo" onAction="#onServerVanillaLoaderSelected"/>
+                        </HBox>
+
+                        <HBox alignment="CENTER_LEFT" spacing="10">
+                            <Label fx:id="serverStatusLabel" text="%status_not_running" styleClass="server-status-text"/>
+                            <ProgressIndicator fx:id="serverStartSpinner" maxWidth="16" maxHeight="16" visible="false" managed="false"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button text="%server_advanced_btn" styleClass="server-action" onAction="#onOpenServerAdvanced"/>
+                        </HBox>
+                    </VBox>
+
+                    <!-- Сервер на VPS — прямо на главном экране «Сервер» (11.10.2026): из цепочки
+                         «Подробно → Добавить сервер → вкладка VPS» панель никто не находил. -->
+                    <VBox styleClass="panel" spacing="10">
+                        <HBox alignment="CENTER_LEFT" spacing="12">
+                            <FontIcon iconLiteral="fth-cloud" iconSize="20"/>
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%vps_card_title" styleClass="panel-title"/>
+                                <Label text="%vps_card_sub" styleClass="toggle-sub" wrapText="true"/>
+                                <Hyperlink text="%vps_card_link" styleClass="all-builds-link" style="-fx-padding: 2 0 0 0;" onAction="#onOpenVpsGuide"/>
+                            </VBox>
+                            <Button text="%vps_card_btn" styleClass="server-action" minWidth="-Infinity" onAction="#onOpenVpsCreate"/>
+                        </HBox>
+                        <Label fx:id="vpsCardStatus" styleClass="toggle-sub" wrapText="true" visible="false" managed="false"/>
+                    </VBox>
+
+                                        <!--  ==  SERVER MONITORING  ==
+                         Lived at the bottom of the builds screen, which is where nobody
+                         looks for it: it has its own data file and nothing to do with builds. -->
+                    <VBox styleClass="panel" spacing="12">
+                        <HBox alignment="CENTER_LEFT" spacing="10">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%server_monitor_title" styleClass="panel-title"/>
+                                <Label text="%server_monitor_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <Button text="%server_monitor_add_btn" styleClass="server-action" onAction="#onAddMonitoredServer"/>
+                        </HBox>
+                        <HBox fx:id="monitorAddRow" spacing="8" visible="false" managed="false">
+                            <TextField fx:id="monitorAddressField" styleClass="text-input, mono" promptText="%server_monitor_placeholder" HBox.hgrow="ALWAYS" onAction="#onAddMonitoredServer"/>
+                            <Button text="%server_monitor_add" styleClass="play-btn, modal-create-btn" onAction="#onAddMonitoredServer"/>
+                        </HBox>
+                        <VBox fx:id="monitorList" spacing="8"/>
+                        <Label fx:id="monitorEmptyLabel" text="%server_monitor_empty" styleClass="empty-state-label" wrapText="true" visible="true" managed="true"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="8">
+                        <Label text="%my_servers_title" styleClass="panel-title"/>
+                        <VBox fx:id="myServersQuickList" spacing="0"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  SERVER: ADVANCED (full server list)  ==  -->
+            <ScrollPane fx:id="screenServerAdvanced" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="14">
+                    <Hyperlink text="%back_btn" styleClass="all-builds-link" onAction="#onServerAdvancedBack"/>
+                    <VBox spacing="4">
+                        <Label text="%server_advanced_btn" styleClass="page-title"/>
+                        <Label fx:id="serverAdvancedSummaryLabel" text="%server_summary_zero" styleClass="page-sub"/>
+                    </VBox>
+                    <VBox styleClass="panel" spacing="8">
+                        <Label text="%servers_title" styleClass="panel-title"/>
+                        <VBox fx:id="serverAdvancedList" spacing="0"/>
+                        <Button text="%add_server_btn" styleClass="add-build-card" maxWidth="Infinity" onAction="#onOpenCreateServer"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  SERVER: DETAIL (per-server console/agent/tunnel/network/plugins)  ==  -->
+            <ScrollPane fx:id="screenServerDetail" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="14">
+                    <Hyperlink text="%back_btn" styleClass="all-builds-link" onAction="#onServerDetailBack"/>
+                    <VBox spacing="4">
+                        <Label fx:id="serverDetailTitle" styleClass="page-title"/>
+                        <Label fx:id="serverDetailSub" styleClass="page-sub"/>
+                    </VBox>
+
+                    <!-- Agent connection gate - shown INSTEAD of console/tunnel/network/plugins
+                         for a VPS server whose agent hasn't been confirmed reachable yet.
+                         See MainController.renderAgentGate(). -->
+                    <VBox fx:id="agentPanel" styleClass="panel" spacing="10" visible="false" managed="false">
+                        <Label text="%agent_panel_title" styleClass="toggle-label"/>
+                        <Label fx:id="agentStatusLine" text="%agent_not_connected" styleClass="toggle-sub"/>
+                        <Label text="%agent_install_label" styleClass="toggle-sub" wrapText="true"/>
+                        <HBox spacing="8">
+                            <TextField fx:id="agentCommandField" styleClass="text-input, mono" editable="false" HBox.hgrow="ALWAYS"/>
+                            <Button text="%copy_btn" styleClass="copy-btn" onAction="#onCopyAgentCommand"/>
+                        </HBox>
+                        <Button fx:id="agentCheckBtn" text="%agent_check_btn" styleClass="play-btn" maxWidth="Infinity" onAction="#onCheckAgentConnection"/>
+                    </VBox>
+
+                    <!-- Сервер панели VPS (SSH): подключение и его проверка. VpsPanelController. -->
+                    <VBox fx:id="vpsSshPanel" styleClass="panel" spacing="8" visible="false" managed="false">
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <Label text="Подключение по SSH" styleClass="panel-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button fx:id="vpsSshCheckBtn" text="Проверить подключение" styleClass="server-action" onAction="#onVpsCheckConnection"/>
+                        </HBox>
+                        <Label fx:id="vpsSshInfoLabel" styleClass="toggle-sub, mono" wrapText="true"/>
+                        <Label fx:id="vpsSshHostKeyLabel" styleClass="toggle-sub, mono" wrapText="true"/>
+                        <Label fx:id="vpsSshStatusLabel" styleClass="toggle-sub" wrapText="true"/>
+                    </VBox>
+
+                    <VBox fx:id="consolePanel" styleClass="panel" spacing="10">
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <Label text="%server_console_label" styleClass="panel-title"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button fx:id="serverMoveToVpsBtn" text="На VPS" styleClass="server-action" onAction="#onMoveServerToVps" visible="false" managed="false"/>
+                            <Button fx:id="serverDetailHelpBtn" text="%server_help_btn" styleClass="server-action" onAction="#onOpenServerHelp"/>
+                            <Button fx:id="serverDetailToggleBtn" text="%start_btn" styleClass="server-action" onAction="#onToggleFocusedServer"/>
+                        </HBox>
+                        <TextArea fx:id="consoleArea" styleClass="console-area" editable="false" wrapText="true" prefRowCount="14"/>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <ToggleButton fx:id="consoleChatToggle" text="Чат" styleClass="server-action" disable="true" onAction="#onToggleConsoleChat"/>
+                            <TextField fx:id="consoleCommandField" styleClass="text-input, mono" promptText="Введите команду… (Tab — дописать, ↑ — прошлые команды)"
+                                       HBox.hgrow="ALWAYS" disable="true" onAction="#onSendConsoleCommand"/>
+                            <Button fx:id="consoleSendBtn" text="%server_console_send" styleClass="copy-btn" disable="true" onAction="#onSendConsoleCommand"/>
+                        </HBox>
+                        <!-- Быстрые команды (11.10.2026): то, что пишут чаще всего, — одной кнопкой. -->
+                        <HBox fx:id="quickCmdRow" spacing="6" alignment="CENTER_LEFT" disable="true">
+                            <Label text="Быстро:" styleClass="toggle-sub"/>
+                            <Button text="День" styleClass="server-action, quick-cmd" onAction="#onQuickDay"/>
+                            <Button text="Ясная погода" styleClass="server-action, quick-cmd" onAction="#onQuickClear"/>
+                            <Button text="Сохранить мир" styleClass="server-action, quick-cmd" onAction="#onQuickSave"/>
+                            <Button fx:id="quickRestartBtn" text="Рестарт через минуту" styleClass="server-action, quick-cmd" onAction="#onQuickRestart"/>
+                        </HBox>
+                    </VBox>
+
+                    <!-- Hub/satellite network - only shown when this server is part of one. -->
+                    <VBox fx:id="networkPanel" styleClass="panel" spacing="8" visible="false" managed="false">
+                        <Label text="%network_title" styleClass="toggle-label"/>
+                        <Label text="%network_sub" styleClass="toggle-sub"/>
+                        <VBox fx:id="networkPanelBody" spacing="0"/>
+                    </VBox>
+
+                    <!-- Reinstall (VPS only) - change the installed version/loader on an existing
+                         server without deleting and re-adding the whole entry. -->
+                    <VBox fx:id="reinstallPanel" styleClass="panel" spacing="8" visible="false" managed="false">
+                        <Label text="Переустановить сервер" styleClass="panel-title"/>
+                        <Label text="Останавливает сервер (если запущен) и ставит выбранную версию/загрузчик поверх — текущий мир будет потерян."
+                               styleClass="toggle-sub" wrapText="true"/>
+                        <HBox spacing="10">
+                            <VBox spacing="6" HBox.hgrow="ALWAYS">
+                                <Label text="%label_version" styleClass="select-label"/>
+                                <ComboBox fx:id="reinstallVersionCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                            </VBox>
+                            <VBox spacing="6" HBox.hgrow="ALWAYS">
+                                <Label text="%label_loader" styleClass="select-label"/>
+                                <ComboBox fx:id="reinstallLoaderCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                            </VBox>
+                        </HBox>
+                        <Button fx:id="reinstallBtn" text="Переустановить" styleClass="secondary-button"
+                                maxWidth="Infinity" onAction="#onReinstallVpsServer"/>
+                    </VBox>
+
+                    <!-- Brand plugins - blauncher.ru's own catalog, sold on FunPay. Clicking a
+                         card opens its FunPay listing in the system browser; the key field
+                         below activates a plugin already purchased there. See BrandPlugin,
+                         PluginLicenseService and MainController's renderBrandPluginsList /
+                         onActivateBrandPluginKey. -->
+                    <VBox fx:id="brandPluginsPanel" styleClass="panel" spacing="8">
+                        <Label text="%brand_plugins_title" styleClass="panel-title"/>
+                        <Label text="%brand_plugins_sub" styleClass="toggle-sub" wrapText="true"/>
+                        <VBox fx:id="brandPluginsList" spacing="0"/>
+                        <Button text="%plugins_btn" styleClass="secondary-button" maxWidth="Infinity"
+                                onAction="#onOpenPluginCatalog"/>
+                        <Separator/>
+                        <Label text="%brand_plugin_key_label" styleClass="field-label"/>
+                        <HBox spacing="8">
+                            <TextField fx:id="brandPluginKeyField" styleClass="text-input, mono"
+                                       promptText="%brand_plugin_key_prompt" HBox.hgrow="ALWAYS"
+                                       onAction="#onActivateBrandPluginKey"/>
+                            <Button fx:id="brandPluginActivateBtn" text="%brand_plugin_activate_btn"
+                                    styleClass="server-action" onAction="#onActivateBrandPluginKey"/>
+                        </HBox>
+                        <Label fx:id="brandPluginKeyStatusLabel" styleClass="toggle-sub" wrapText="true"
+                               visible="false" managed="false"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  TOOLS  ==
+                 Карточки инструментов. Сами инструменты собираются в коде (ui/SkinEditor,
+                 ui/DisplayStudio) и открываются в screenToolHost — так у каждого вся площадь окна,
+                 а не модалка поверх. «Скоро» — карточки без действия: их функции появятся, когда
+                 онлайн BLauncher перевалит за сотню. -->
+            <ScrollPane fx:id="screenTools" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <VBox spacing="4">
+                        <Label fx:id="toolsTitleLabel" text="%nav_tools" styleClass="page-title"/>
+                        <Label text="%tools_sub" styleClass="page-sub"/>
+                    </VBox>
+                    <FlowPane fx:id="toolsGrid" hgap="12" vgap="12"/>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  TOOL HOST (the open tool, full area)  ==  -->
+            <ScrollPane fx:id="screenToolHost" styleClass="screen-scroll" vbarPolicy="NEVER" hbarPolicy="NEVER"
+                        fitToWidth="true" fitToHeight="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="12">
+                    <HBox spacing="12" alignment="CENTER_LEFT">
+                        <Hyperlink text="%back_btn" styleClass="all-builds-link" onAction="#onNavTools"/>
+                        <Label fx:id="toolHostTitle" styleClass="page-title"/>
+                    </HBox>
+                    <StackPane fx:id="toolHostContent" VBox.vgrow="ALWAYS"/>
+                </VBox>
+            </ScrollPane>
+
+            <!--  ==  SETTINGS  ==  -->
+            <ScrollPane fx:id="screenSettings" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <VBox spacing="4">
+                        <Label fx:id="settingsTitleLabel" text="%settings_title" styleClass="page-title"/>
+                        <Label text="%settings_sub" styleClass="page-sub"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="10">
+                        <Label text="%ram_title" styleClass="panel-title"/>
+                        <HBox styleClass="ram-row-inline" spacing="10" alignment="CENTER_LEFT" maxWidth="360">
+                            <Slider fx:id="ramSlider" min="0.5" max="16" value="6" blockIncrement="0.5" HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="ramValueLabel" text="6 ГБ" styleClass="ram-value"/>
+                        </HBox>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <Label fx:id="recommendedRamLabel" styleClass="recommended-ram-label"/>
+                            <Button fx:id="useRecommendedRamButton" text="%recommended_ram_btn" styleClass="secondary-button" onAction="#onUseRecommendedRam"/>
+                        </HBox>
+                    </VBox>
+
+                    <!-- Запуск игры (11.10.2026): окно, автовход, свои аргументы Java и игры. Общие для всех
+                         сборок; у сборки можно задать свои в её окне («Настройки запуска»). -->
+                    <VBox styleClass="panel" spacing="10">
+                        <Label text="%launch_panel_title" styleClass="panel-title"/>
+                        <VBox spacing="2">
+                            <Label text="%window_size_label" styleClass="toggle-label"/>
+                            <Label text="%window_size_sub" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <TextField fx:id="windowWidthField" promptText="854" prefWidth="90"/>
+                            <Label text="×" styleClass="toggle-label"/>
+                            <TextField fx:id="windowHeightField" promptText="480" prefWidth="90"/>
+                            <Button text="1280×720" styleClass="secondary-button" onAction="#onWindowPreset720"/>
+                            <Button text="1920×1080" styleClass="secondary-button" onAction="#onWindowPreset1080"/>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="%fullscreen_label" styleClass="toggle-label" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                            <ToggleButton fx:id="fullscreenToggle" styleClass="switch-toggle" onAction="#onToggleFullscreen"/>
+                        </HBox>
+                        <Separator/>
+                        <VBox spacing="2">
+                            <Label text="%auto_join_label" styleClass="toggle-label"/>
+                            <Label text="%auto_join_sub" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+                        <TextField fx:id="autoJoinServerField" promptText="mc.example.ru:25565"/>
+                        <Separator/>
+                        <VBox spacing="2">
+                            <Label text="%jvm_args_label" styleClass="toggle-label"/>
+                            <Label text="%jvm_args_sub" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+                        <TextField fx:id="jvmArgsField" promptText="%jvm_args_prompt"/>
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <Button text="%jvm_preset_g1" styleClass="secondary-button" onAction="#onJvmPresetG1"/>
+                            <Button text="%jvm_preset_zgc" styleClass="secondary-button" onAction="#onJvmPresetZgc"/>
+                            <Button text="%jvm_preset_clear" styleClass="secondary-button" onAction="#onJvmPresetClear"/>
+                        </HBox>
+                        <Label fx:id="jvmArgsStatusLabel" styleClass="toggle-sub" wrapText="true" visible="false" managed="false"/>
+                        <Separator/>
+                        <VBox spacing="2">
+                            <Label text="%game_args_label" styleClass="toggle-label"/>
+                            <Label text="%game_args_sub" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+                        <TextField fx:id="gameArgsField" promptText="--demo"/>
+                        <Label fx:id="gameArgsStatusLabel" styleClass="toggle-sub" wrapText="true" visible="false" managed="false"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="14">
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%close_launcher_label" styleClass="toggle-label"/>
+                                <Label text="%close_launcher_sub" styleClass="toggle-sub"/>
+                            </VBox>
+                            <ToggleButton fx:id="closeOnLaunchToggle" styleClass="switch-toggle"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%minimize_launch_label" styleClass="toggle-label"/>
+                                <Label text="%minimize_launch_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="minimizeOnLaunchToggle" styleClass="switch-toggle" onAction="#onToggleMinimizeOnLaunch"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%show_snapshots_label" styleClass="toggle-label"/>
+                                <Label text="%show_snapshots_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="showSnapshotsToggle" styleClass="switch-toggle" onAction="#onToggleShowSnapshots"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%offline_mode_label" styleClass="toggle-label"/>
+                                <Label text="%offline_mode_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="offlineModeToggle" styleClass="switch-toggle" onAction="#onToggleOfflineMode"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%telemetry_label" styleClass="toggle-label"/>
+                                <Label text="%telemetry_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="telemetryToggle" styleClass="switch-toggle" onAction="#onToggleTelemetry"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%bl_badge_label" styleClass="toggle-label"/>
+                                <Label text="%bl_badge_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="blBadgeToggle" styleClass="switch-toggle" onAction="#onToggleBlBadge"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%invert_mouse_label" styleClass="toggle-label"/>
+                                <Label text="%invert_mouse_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="invertMouseToggle" styleClass="switch-toggle" onAction="#onToggleInvertMouse"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%animations_label" styleClass="toggle-label"/>
+                                <Label text="%animations_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <ToggleButton fx:id="animationsToggle" styleClass="switch-toggle" onAction="#onToggleAnimations"/>
+                        </HBox>
+                        <Separator/>
+                        <HBox alignment="CENTER_LEFT">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%language_title" styleClass="toggle-label"/>
+                                <Label text="%language_sub" styleClass="toggle-sub"/>
+                            </VBox>
+                            <HBox styleClass="lang-toggle" spacing="2">
+                                <ToggleButton fx:id="langRuButton" text="RU" styleClass="lang-option" selected="true" toggleGroup="$langToggleGroup" onAction="#onLanguageRu"/>
+                                <ToggleButton fx:id="langEnButton" text="EN" styleClass="lang-option" toggleGroup="$langToggleGroup" onAction="#onLanguageEn"/>
+                            </HBox>
+                        </HBox>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="10">
+                        <Label text="%theme_title" styleClass="panel-title"/>
+                        <HBox spacing="12">
+                            <VBox fx:id="themeVioletSwatch" styleClass="theme-swatch, active" spacing="8" HBox.hgrow="ALWAYS" onMouseClicked="#onThemeViolet">
+                                <Region styleClass="theme-preview, violet" prefHeight="36"/>
+                                <Label text="%theme_violet"/>
+                            </VBox>
+                            <VBox fx:id="themeBlackSwatch" styleClass="theme-swatch" spacing="8" HBox.hgrow="ALWAYS" onMouseClicked="#onThemeBlack">
+                                <Region styleClass="theme-preview, black" prefHeight="36"/>
+                                <Label text="%theme_black"/>
+                            </VBox>
+                            <VBox fx:id="themeWhiteSwatch" styleClass="theme-swatch" spacing="8" HBox.hgrow="ALWAYS" onMouseClicked="#onThemeWhite">
+                                <Region styleClass="theme-preview, white" prefHeight="36"/>
+                                <Label text="%theme_white"/>
+                            </VBox>
+                        </HBox>
+                        <Button fx:id="paletteEditButton" text="%palette_edit_btn" styleClass="secondary-button"
+                                maxWidth="Infinity" contentDisplay="LEFT" graphicTextGap="8" onAction="#onOpenPaletteEditor">
+                            <graphic><FontIcon iconLiteral="fth-droplet" iconSize="14"/></graphic>
+                        </Button>
+                    </VBox>
+
+                    <!-- Картинка за экранами лаунчера. Плитки строит ui/BackgroundPicker при
+                         первом открытии настроек — шестнадцать превью не декодируются на старте. -->
+                    <VBox styleClass="panel" spacing="10">
+                        <Label text="%bg_title" styleClass="panel-title"/>
+                        <VBox fx:id="backgroundPickerHost"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="10">
+                        <Label text="%account_title" styleClass="panel-title"/>
+                        <TextField fx:id="usernameField" styleClass="input-field" promptText="Имя игрока"/>
+                        <Button fx:id="microsoftLoginButton" text="%microsoft_login_btn" styleClass="secondary-button"
+                                maxWidth="Infinity" contentDisplay="LEFT" graphicTextGap="8" onAction="#onMicrosoftLogin">
+                            <graphic><FontIcon iconLiteral="fth-log-in" iconSize="14"/></graphic>
+                        </Button>
+                        <Label fx:id="loginStatusLabel" styleClass="status-label" wrapText="true"/>
+                        <VBox fx:id="loginCodeBox" spacing="6" visible="false" managed="false">
+                            <Label text="%login_code_hint" styleClass="login-code-hint" wrapText="true"/>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <Label fx:id="loginCodeLabel" styleClass="login-code-label" maxWidth="Infinity" alignment="CENTER" HBox.hgrow="ALWAYS"/>
+                                <Button fx:id="copyCodeButton" text="%copy_btn" styleClass="input-field" onAction="#onCopyLoginCode"/>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+
+                    <!-- Журнал игры нужен, когда что-то не запускается, а не каждый раз: свёрнут,
+                         пока его не открыли. Строки в него пишутся всё равно. -->
+                    <VBox styleClass="panel" spacing="8">
+                        <HBox alignment="CENTER_LEFT" spacing="8">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                <Label text="%game_console_title" styleClass="panel-title"/>
+                                <Label text="%game_console_sub" styleClass="toggle-sub" wrapText="true"/>
+                            </VBox>
+                            <Button fx:id="gameConsoleToggleBtn" text="%game_console_show" styleClass="secondary-button" onAction="#onToggleGameConsole"/>
+                        </HBox>
+                        <VBox fx:id="gameConsoleBody" spacing="8" visible="false" managed="false">
+                            <HBox spacing="8">
+                                <Button text="%clear_btn" styleClass="secondary-button" onAction="#onClearConsole"/>
+                                <Button text="%copy_btn" styleClass="secondary-button" onAction="#onCopyConsole"/>
+                                <Button text="%save_log_btn" styleClass="secondary-button" onAction="#onSaveConsole"/>
+                            </HBox>
+                            <TextArea fx:id="gameConsoleOutput" styleClass="console-area" editable="false" wrapText="true" prefRowCount="16"/>
+                        </VBox>
+                    </VBox>
+
+                    <!-- Leftovers of an older settings screen: loaderVersionBox/legacyVersionHint
+                         and the scroll-fps caption were permanently hidden and nothing ever turned
+                         them on (the build dialog uses buildLoaderVersionBox instead). Removed
+                         rather than kept as decoration.
+                         adsContainer stays on purpose: it is the placeholder for the ad banner
+                         (config.enableAds, the bundled video), and whether to wire it up is a
+                         product decision, not a layout one. -->
+                    <VBox fx:id="adsContainer" spacing="10" visible="false" managed="false"/>
+                    <Label fx:id="appVersionLabel" styleClass="app-version-label" maxWidth="Infinity" alignment="CENTER"/>
+                </VBox>
+            </ScrollPane>
+
+        </StackPane>
+    </HBox>
+
+    <!-- In-scene overlay for modals + toasts - see MainController's modal/toast helpers.
+         Each modal is its own StackPane child, shown one at a time by toggling
+         visible+managed - mirroring the concept's .modal-overlay/.modal-overlay.open. -->
+    <StackPane fx:id="overlayLayer" pickOnBounds="false" visible="false" managed="false">
+
+        <!-- ===== CREATE / EDIT BUILD MODAL ===== -->
+        <StackPane fx:id="createBuildOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <!-- Widened from 420 - with the loader-version column now a possible third member of
+                 the version/loader HBox row, 420 was too narrow to give it (or even the original
+                 two) enough room to render normally, not just look "a bit tight". -->
+            <VBox styleClass="modal-card" prefWidth="720" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label fx:id="createBuildModalTitle" text="%build_create_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseCreateBuild">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <VBox styleClass="modal-body" spacing="10" VBox.vgrow="ALWAYS">
+                    <Label text="%build_name_label" styleClass="field-label"/>
+                    <TextField fx:id="buildNameField" styleClass="text-input" promptText="Например, My Modpack"/>
+
+                    <HBox spacing="10">
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="%label_version" styleClass="select-label"/>
+                            <ComboBox fx:id="buildVersionCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                        </VBox>
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="%label_loader" styleClass="select-label"/>
+                            <ComboBox fx:id="buildLoaderCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                        </VBox>
+                        <!-- Only shown for a non-vanilla loader (see refreshBuildLoaderVersions) -
+                             lists the actual downloadable builds for whatever version+loader is
+                             picked to the left, so a build can be pinned to a specific loader
+                             version instead of always drifting to "whatever's latest right now". -->
+                        <VBox fx:id="buildLoaderVersionBox" spacing="6" visible="false" managed="false" HBox.hgrow="ALWAYS">
+                            <Label text="%loader_version_label" styleClass="select-label"/>
+                            <ComboBox fx:id="buildLoaderVersionCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                        </VBox>
+                    </HBox>
+
+                    <!-- Свои настройки запуска сборки (11.10.2026): пустое поле — общее из Настроек. -->
+                    <Hyperlink fx:id="buildLaunchToggleLink" text="%build_launch_toggle" styleClass="all-builds-link" onAction="#onToggleBuildLaunch"/>
+                    <VBox fx:id="buildLaunchBox" spacing="6" visible="false" managed="false">
+                        <Label text="%build_launch_sub" styleClass="toggle-sub" wrapText="true"/>
+                        <HBox spacing="10">
+                            <VBox spacing="6" prefWidth="160">
+                                <Label text="%build_memory_label" styleClass="select-label"/>
+                                <TextField fx:id="buildMemoryField" styleClass="text-input" promptText="%build_memory_prompt"/>
+                            </VBox>
+                            <VBox spacing="6" HBox.hgrow="ALWAYS">
+                                <Label text="%auto_join_label" styleClass="select-label"/>
+                                <TextField fx:id="buildServerField" styleClass="text-input"/>
+                            </VBox>
+                        </HBox>
+                        <Label text="%jvm_args_label" styleClass="select-label"/>
+                        <TextField fx:id="buildJvmArgsField" styleClass="text-input"/>
+                        <Label text="%game_args_label" styleClass="select-label"/>
+                        <TextField fx:id="buildGameArgsField" styleClass="text-input"/>
+                    </VBox>
+
+                    <!-- Only shown when editing an existing build (onOpenEditBuild), not when
+                         creating a new one — a fresh build has no installed mods yet. -->
+                    <!-- Разделы (моды, ресурспаки, датапаки, шейдеры) рисует renderEditBuildModsList. -->
+                    <VBox fx:id="editBuildModsSection" spacing="8" visible="false" managed="false">
+                        <ScrollPane fitToWidth="true" styleClass="screen-scroll" vbarPolicy="AS_NEEDED" maxHeight="380" VBox.vgrow="ALWAYS">
+                            <VBox fx:id="editBuildModsList" spacing="0"/>
+                        </ScrollPane>
+                    </VBox>
+
+                    <Button fx:id="createBuildConfirmBtn" text="%create_btn" styleClass="play-btn, modal-create-btn"
+                            maxWidth="Infinity" onAction="#onConfirmCreateBuild"/>
+                    <Hyperlink fx:id="deleteBuildLink" text="Удалить сборку" styleClass="all-builds-link"
+                               visible="false" managed="false" onAction="#onDeleteEditingBuild"/>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== IMPORT / EXPORT MODAL ===== -->
+        <StackPane fx:id="shareOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card" prefWidth="620" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="%share_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseShare">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <HBox styleClass="share-tabs" spacing="4">
+                    <ToggleButton fx:id="shareTabExport" text="%export_btn" styleClass="share-tab" selected="true" toggleGroup="$shareTabToggleGroup" onAction="#onShareTabExport"/>
+                    <ToggleButton fx:id="shareTabImport" text="%import_btn" styleClass="share-tab" toggleGroup="$shareTabToggleGroup" onAction="#onShareTabImport"/>
+                </HBox>
+                <VBox fx:id="exportPanel" styleClass="modal-body" spacing="10" VBox.vgrow="ALWAYS">
+                    <Label text="%export_link_label" styleClass="field-label"/>
+                    <HBox spacing="8">
+                        <TextField fx:id="exportLinkField" styleClass="text-input, mono" editable="false" HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="exportCopyBtn" text="%copy_btn" styleClass="copy-btn" onAction="#onCopyExportLink" disable="true"/>
+                    </HBox>
+                    <Label text="%export_pick_build_label" styleClass="field-label"/>
+                    <ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" styleClass="export-build-scroll" VBox.vgrow="ALWAYS">
+                        <VBox fx:id="exportBuildRow" spacing="4"/>
+                    </ScrollPane>
+                    <Label fx:id="exportEmptyStateLabel" text="%export_no_builds_label" styleClass="toggle-sub"
+                           wrapText="true" visible="false" managed="false"/>
+                </VBox>
+                <VBox fx:id="importPanel" styleClass="modal-body" spacing="10" visible="false" managed="false" VBox.vgrow="ALWAYS">
+                    <Label text="%import_paste_label" styleClass="field-label"/>
+                    <TextField fx:id="importLinkField" styleClass="text-input, mono" promptText="Blauncher/link/..."/>
+                    <Button fx:id="importConfirmBtn" text="%import_confirm_btn" styleClass="play-btn, modal-create-btn"
+                            maxWidth="Infinity" onAction="#onConfirmImport"/>
+                    <Label fx:id="importStatusLabel" styleClass="import-status" wrapText="true"/>
+                    <HBox fx:id="importProgressRow" spacing="8" alignment="CENTER_LEFT" visible="false" managed="false">
+                        <ProgressBar fx:id="importProgressBar" maxWidth="Infinity" progress="0" HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="importProgressLabel" styleClass="toggle-sub, mono" minWidth="48" prefWidth="48"/>
+                    </HBox>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== CREATE SERVER MODAL (local / VPS) ===== -->
+        <StackPane fx:id="createServerOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card" prefWidth="640" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="%server_create_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button fx:id="createServerCloseBtn" styleClass="modal-close" onAction="#onCloseCreateServer">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <HBox styleClass="share-tabs" spacing="4">
+                    <ToggleButton fx:id="serverTypeTabLocal" text="%server_type_local" styleClass="share-tab" selected="true" toggleGroup="$serverTypeToggleGroup" onAction="#onServerTypeTabLocal"/>
+                    <ToggleButton fx:id="serverTypeTabVps" text="%server_type_vps" styleClass="share-tab" toggleGroup="$serverTypeToggleGroup" onAction="#onServerTypeTabVps"/>
+                </HBox>
+
+                <!--  ==  Local server fields  ==  -->
+                <VBox fx:id="createLocalPanel" styleClass="modal-body" spacing="10" VBox.vgrow="ALWAYS">
+                    <Label text="Карточка появится в списке «Мои серверы» — запускать и останавливать можно прямо оттуда, независимо от других серверов."
+                           styleClass="toggle-sub" wrapText="true"/>
+                    <Label text="%server_name_label" styleClass="field-label"/>
+                    <TextField fx:id="newServerNameField" styleClass="text-input" promptText="Например, Хардкор SMP"/>
+                    <Label text="%server_port_label" styleClass="field-label"/>
+                    <TextField fx:id="newServerPortField" styleClass="text-input, mono" text="25567"/>
+                    <HBox spacing="10">
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="%label_version" styleClass="select-label"/>
+                            <ComboBox fx:id="newServerVersionCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                        </VBox>
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="%label_loader" styleClass="select-label"/>
+                            <ComboBox fx:id="newServerLoaderCombo" styleClass="combo-box" maxWidth="Infinity"/>
+                        </VBox>
+                    </HBox>
+                    <Label text="%ram_title" styleClass="field-label"/>
+                    <HBox styleClass="ram-row-inline" spacing="10" alignment="CENTER_LEFT">
+                        <Slider fx:id="newServerRamSlider" min="0.5" max="16" value="4" blockIncrement="0.5" HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="newServerRamValueLabel" text="4 ГБ" styleClass="ram-value"/>
+                    </HBox>
+                </VBox>
+
+                <!--  ==  VPS по SSH, шаг 1: данные доступа из письма хостера  ==
+                     Логика — VpsPanelController. Версия, ядро и память выбираются позже, при
+                     установке сервера: здесь только подключение. -->
+                <VBox fx:id="createVpsStep1Panel" styleClass="modal-body" spacing="10" visible="false" managed="false" VBox.vgrow="ALWAYS">
+                    <Label text="Арендуйте VPS у любого хостера с Ubuntu 22.04+ или Debian 12+ и введите данные доступа из письма хостера. Дальше лаунчер всё поставит сам."
+                           styleClass="toggle-sub" wrapText="true"/>
+                    <Label text="%server_name_label" styleClass="field-label"/>
+                    <TextField fx:id="newVpsNameField" styleClass="text-input" promptText="Например, anarchy-1"/>
+                    <HBox spacing="10">
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="IP-адрес сервера" styleClass="field-label"/>
+                            <TextField fx:id="newVpsHostField" styleClass="text-input, mono" promptText="45.132.148.21"/>
+                        </VBox>
+                        <VBox spacing="6" prefWidth="110">
+                            <Label text="Порт SSH" styleClass="field-label"/>
+                            <TextField fx:id="newVpsSshPortField" styleClass="text-input, mono" text="22"/>
+                        </VBox>
+                    </HBox>
+                    <HBox spacing="10">
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <Label text="Пользователь" styleClass="field-label"/>
+                            <TextField fx:id="newVpsUserField" styleClass="text-input, mono" text="root"/>
+                        </VBox>
+                        <VBox spacing="6" prefWidth="160">
+                            <Label text="%server_mc_port_label" styleClass="field-label"/>
+                            <TextField fx:id="newVpsPortField" styleClass="text-input, mono" text="25565"/>
+                        </VBox>
+                    </HBox>
+                    <HBox styleClass="share-tabs" spacing="4">
+                        <ToggleButton fx:id="newVpsAuthPasswordTab" text="Пароль" styleClass="share-tab" selected="true"
+                                      toggleGroup="$vpsAuthToggleGroup" onAction="#onVpsAuthPassword"/>
+                        <ToggleButton fx:id="newVpsAuthKeyTab" text="SSH-ключ" styleClass="share-tab"
+                                      toggleGroup="$vpsAuthToggleGroup" onAction="#onVpsAuthKey"/>
+                    </HBox>
+                    <VBox fx:id="newVpsPasswordBox" spacing="6">
+                        <PasswordField fx:id="newVpsPasswordField" styleClass="text-input" promptText="Пароль от VPS"/>
+                    </VBox>
+                    <VBox fx:id="newVpsKeyBox" spacing="6" visible="false" managed="false">
+                        <HBox spacing="8">
+                            <TextField fx:id="newVpsKeyFileField" styleClass="text-input, mono" promptText="Файл приватного ключа (id_ed25519, id_rsa …)" HBox.hgrow="ALWAYS"/>
+                            <Button text="Обзор…" styleClass="secondary-button" onAction="#onVpsBrowseKey"/>
+                        </HBox>
+                        <HBox spacing="10">
+                            <PasswordField fx:id="newVpsKeyPassphraseField" styleClass="text-input" promptText="Пароль ключа, если есть" HBox.hgrow="ALWAYS"/>
+                            <PasswordField fx:id="newVpsSudoPasswordField" styleClass="text-input" promptText="Пароль sudo, если не root" HBox.hgrow="ALWAYS"/>
+                        </HBox>
+                    </VBox>
+                    <Label text="Пароль нужен один раз: дальше лаунчер входит по своему SSH-ключу, зашифрованному на этом ПК."
+                           styleClass="toggle-sub" wrapText="true"/>
+                </VBox>
+
+                <!--  ==  VPS по SSH, шаг 2: ход подключения по пунктам  ==  -->
+                <VBox fx:id="createVpsStep2Panel" styleClass="modal-body" spacing="10" visible="false" managed="false" VBox.vgrow="ALWAYS">
+                    <VBox fx:id="newVpsStepsList" spacing="6"/>
+                    <Label fx:id="newVpsConnectionStatusLabel" styleClass="toggle-sub" wrapText="true"/>
+                    <HBox spacing="8">
+                        <Button fx:id="newVpsBackBtn" text="Изменить данные" styleClass="secondary-button" onAction="#onVpsBackToForm"/>
+                        <Button fx:id="newVpsRetryBtn" text="Повторить" styleClass="play-btn, modal-create-btn" HBox.hgrow="ALWAYS"
+                                maxWidth="Infinity" onAction="#onVpsRetryConnect"/>
+                    </HBox>
+                </VBox>
+
+                <VBox styleClass="modal-body" spacing="0">
+                    <Button fx:id="createServerConfirmBtn" text="%create_btn" styleClass="play-btn, modal-create-btn"
+                            maxWidth="Infinity" onAction="#onConfirmCreateServer"/>
+                    <VBox fx:id="serverSetupProgressBox" spacing="7" visible="false" managed="false">
+                        <Label fx:id="serverSetupProgressLabel" text="%server_setup_downloading" styleClass="toggle-sub"/>
+                        <ProgressBar fx:id="serverSetupProgressBar" maxWidth="Infinity" progress="0"/>
+                    </VBox>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== SERVER COMMANDS MODAL ===== -->
+        <StackPane fx:id="commandsOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox fx:id="commandsModalCard" styleClass="modal-card" prefWidth="720" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label fx:id="commandsModalTitle" text="Команды сервера" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseCommandsMenu">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <ScrollPane fitToWidth="true" styleClass="screen-scroll" VBox.vgrow="ALWAYS">
+                    <VBox fx:id="commandsListBox" styleClass="modal-body" spacing="10"/>
+                </ScrollPane>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== UPDATE AVAILABLE MODAL ===== -->
+        <StackPane fx:id="updateOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card" prefWidth="620" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label fx:id="updateModalTitle" text="Доступно обновление" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onDismissUpdate">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <VBox styleClass="modal-body" spacing="12" VBox.vgrow="ALWAYS">
+                    <Label fx:id="updateVersionLabel" styleClass="field-label"/>
+                    <!-- vbarPolicy is deliberately left at AS_NEEDED (it used to be NEVER): this
+                         box holds whatever text the update manifest ships, and with the bar hidden
+                         anything past ~220px was silently cut off with no hint that there was more
+                         to read - which is useless the one time a release actually needs to tell
+                         people something longer than three bullet points. -->
+                    <ScrollPane fitToWidth="true" styleClass="screen-scroll" VBox.vgrow="ALWAYS">
+                        <Label fx:id="updateChangelogLabel" wrapText="true" styleClass="toggle-sub"/>
+                    </ScrollPane>
+                    <VBox fx:id="updateProgressBox" spacing="7" visible="false" managed="false">
+                        <Label fx:id="updateProgressLabel" text="Скачивание обновления…" styleClass="toggle-sub"/>
+                        <ProgressBar fx:id="updateProgressBar" maxWidth="Infinity" progress="0"/>
+                    </VBox>
+                    <HBox spacing="10">
+                        <Button fx:id="updateLaterBtn" text="Позже" styleClass="secondary-button" onAction="#onDismissUpdate" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        <Button fx:id="updateNowBtn" text="Обновить" styleClass="play-btn, modal-create-btn" onAction="#onConfirmUpdate" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                    </HBox>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== PLUGIN CATALOG BROWSE MODAL ("Скачать плагины") ===== -->
+        <StackPane fx:id="catalogOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox fx:id="catalogModalCard" styleClass="modal-card" prefWidth="720" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="Плагины BLauncher" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onClosePluginCatalog">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <ScrollPane fitToWidth="true" styleClass="screen-scroll" VBox.vgrow="ALWAYS">
+                    <VBox fx:id="catalogListBox" styleClass="modal-body" spacing="10"/>
+                </ScrollPane>
+            </VBox>
+        </StackPane>
+
+
+        <!-- ===== PROFILE EDITOR MODAL ===== -->
+        <StackPane fx:id="profileEditorOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox fx:id="profileEditorCard" styleClass="modal-card" prefWidth="720" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label fx:id="profileEditorTitle" text="%profile_new_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseProfileEditor">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <ScrollPane fitToWidth="true" styleClass="screen-scroll" VBox.vgrow="ALWAYS">
+                <VBox styleClass="modal-body" spacing="12" VBox.vgrow="ALWAYS">
+                    <VBox spacing="6">
+                        <Label text="%profile_name_label" styleClass="field-label"/>
+                        <TextField fx:id="profileEditorNameField" styleClass="text-input, mono"
+                                   promptText="%profile_name_prompt" maxWidth="Infinity"/>
+                    </VBox>
+
+                    <VBox styleClass="profile-warning" spacing="8">
+                        <Label text="%profile_warning_title" styleClass="profile-warning-title"/>
+                        <Label text="%profile_warning_body" styleClass="toggle-sub" wrapText="true"/>
+                        <Label text="%profile_warning_skin_mod" styleClass="toggle-sub" wrapText="true"/>
+                    </VBox>
+
+                    <HBox spacing="12" alignment="TOP_LEFT">
+                        <VBox spacing="6" HBox.hgrow="ALWAYS" styleClass="profile-preview-box">
+                            <Label text="%profile_skin_label" styleClass="field-label"/>
+                            <StackPane styleClass="profile-preview">
+                                <ImageView fx:id="profileSkinPreview" fitWidth="96" fitHeight="96"
+                                           preserveRatio="true"/>
+                            </StackPane>
+                            <Button fx:id="profileSkinUploadBtn" text="%profile_skin_upload_btn" styleClass="secondary-button"
+                                    maxWidth="Infinity" onAction="#onUploadProfileSkin"/>
+                        </VBox>
+                        <VBox spacing="6" HBox.hgrow="ALWAYS" styleClass="profile-preview-box">
+                            <Label text="%profile_cape_label" styleClass="field-label"/>
+                            <StackPane styleClass="profile-preview">
+                                <ImageView fx:id="profileCapePreview" fitWidth="96" fitHeight="96"
+                                           preserveRatio="true"/>
+                            </StackPane>
+                            <Button fx:id="profileCapeUploadBtn" text="%profile_cape_upload_btn" styleClass="secondary-button"
+                                    maxWidth="Infinity" onAction="#onUploadProfileCape"/>
+                        </VBox>
+                    </HBox>
+
+                    <!-- Where a skin or a cape is taken from: one selectable chip per site, built in
+                         code (ui/SkinSourceTiles) from service/SkinSourceCatalog, so adding a site is
+                         one line there and nothing at all here. Picking a chip downloads from that
+                         site - no site ever opens in a browser. -->
+                    <VBox spacing="8" styleClass="source-panel">
+                        <Label text="%profile_sources_title" styleClass="source-title"/>
+                        <Label text="%profile_sources_hint" styleClass="toggle-sub" wrapText="true"/>
+<TextField fx:id="profileSourceNickField" styleClass="text-input, mono"
+                                   promptText="%profile_source_nick_prompt" maxWidth="Infinity"
+                                   onAction="#onProfileNickEnter"/>
+
+                        <Label text="%profile_sources_skins" styleClass="source-group"/>
+                        <FlowPane fx:id="profileSkinSourcesPane" hgap="8" vgap="8"/>
+
+                        <Label text="%profile_sources_capes" styleClass="source-group"/>
+                        <FlowPane fx:id="profileCapeSourcesPane" hgap="8" vgap="8"/>
+
+                        <HBox spacing="6">
+                            <TextField fx:id="profileSourceUrlField" styleClass="text-input, mono"
+                                       promptText="%profile_source_url_prompt" HBox.hgrow="ALWAYS"
+                                       onAction="#onPullSkinFromUrl"/>
+                            <Button fx:id="profileSourceUrlSkinBtn" text="%profile_source_to_skin_btn"
+                                    styleClass="secondary-button" onAction="#onPullSkinFromUrl"/>
+                            <Button fx:id="profileSourceUrlCapeBtn" text="%profile_source_to_cape_btn"
+                                    styleClass="secondary-button" onAction="#onPullCapeFromUrl"/>
+                        </HBox>
+                    </VBox>
+
+
+                    <HBox spacing="10" alignment="CENTER_RIGHT">
+                        <Button fx:id="profileDeleteBtn" text="%profile_delete_btn" styleClass="danger-button"
+                                onAction="#onDeleteProfile" visible="false" managed="false"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Button text="%cancel_btn" styleClass="secondary-button" onAction="#onCloseProfileEditor"/>
+                        <Button fx:id="profileSaveBtn" text="%save_btn" styleClass="play-btn, modal-create-btn"
+                                onAction="#onSaveProfile"/>
+                    </HBox>
+                </VBox>
+                </ScrollPane>
+            </VBox>
+        </StackPane>
+
+
+
+        <!-- ===== FRIEND PROFILE MODAL =====
+             Профиль друга открывается окном по клику на строку списка. Раньше карточка
+             разворачивалась внизу панели, под всем списком, и при десятке друзей её надо было
+             искать прокруткой. -->
+        <StackPane fx:id="friendProfileOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card" prefWidth="560" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="%friends_friend_profile_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseFriendProfile">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <VBox styleClass="modal-body" spacing="12">
+                    <HBox fx:id="friendCard" styleClass="friend-card" spacing="18" alignment="TOP_LEFT">
+                        <!-- Скин в полный рост: фигура 16x32 при целом увеличении 8x, так что
+                             ни один пиксель не пересэмплируется (см. SkinPreview.fullBody). -->
+                        <StackPane fx:id="friendHeadHolder" styleClass="friend-body"
+                                   minWidth="160" minHeight="288" maxWidth="160" maxHeight="288">
+                            <Label fx:id="friendHeadFallback" styleClass="friend-head-fallback"/>
+                            <ImageView fx:id="friendHeadImage" fitWidth="128" fitHeight="256" preserveRatio="true" smooth="false"/>
+                        </StackPane>
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <Label fx:id="friendCardNick" styleClass="friend-nick"/>
+                                <HBox fx:id="friendOnlineChip" styleClass="friend-online-chip" spacing="5" alignment="CENTER_LEFT">
+                                    <Region styleClass="friend-online-dot"/>
+                                    <Label fx:id="friendOnlineLabel" text="%friends_online" styleClass="friend-online-text"/>
+                                </HBox>
+                            </HBox>
+                            <Label fx:id="friendCardCode" styleClass="friend-code"/>
+                            <Label text="%friends_about_title" styleClass="toggle-label"/>
+                            <Label fx:id="friendCardAbout" styleClass="friend-about" wrapText="true"/>
+                        </VBox>
+                    </HBox>
+                    <HBox spacing="8" alignment="CENTER_LEFT">
+                        <Button fx:id="friendProfileInviteBtn" text="%friends_invite_btn" styleClass="server-action"
+                                onAction="#onInviteSelectedFriend" contentDisplay="LEFT" graphicTextGap="6">
+                            <graphic><FontIcon iconLiteral="fth-user-plus" iconSize="14"/></graphic>
+                        </Button>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="friendRemoveBtn" text="%friends_remove_btn" styleClass="copy-btn"
+                                onAction="#onRemoveSelectedFriend"/>
+                    </HBox>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== MY PROFILE MODAL (Friends screen "Профиль", top right) =====
+             Своя карточка ровно в том виде, в каком её видят друзья — голова скина слева, ник
+             справа от неё — плюс всё, что можно здесь же и поправить: код дружбы (скопировать и
+             отдать друзьям) и текст «О себе». Это единственное место, где они редактируются. -->
+        <StackPane fx:id="myProfileOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card" prefWidth="560" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="%friends_profile_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onCloseMyProfile">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <VBox styleClass="modal-body" spacing="12">
+                    <HBox styleClass="friend-card" spacing="14" alignment="TOP_LEFT">
+                        <StackPane styleClass="friend-head"
+                                   minWidth="96" minHeight="96" maxWidth="96" maxHeight="96">
+                            <Label fx:id="myProfileHeadFallback" styleClass="friend-head-fallback"/>
+                            <ImageView fx:id="myProfileHeadImage" fitWidth="96" fitHeight="96" smooth="false"/>
+                        </StackPane>
+                        <VBox spacing="6" HBox.hgrow="ALWAYS">
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <Label fx:id="myProfileNick" styleClass="friend-nick"/>
+                                <HBox styleClass="friend-online-chip, self" spacing="5" alignment="CENTER_LEFT">
+                                    <Region styleClass="friend-online-dot"/>
+                                    <Label text="%friends_you" styleClass="friend-online-text"/>
+                                </HBox>
+                            </HBox>
+
+                            <Label text="%friends_my_code_label" styleClass="toggle-label"/>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <TextField fx:id="myFriendCodeField" styleClass="text-input, mono"
+                                           editable="false" promptText="%friends_code_pending" HBox.hgrow="ALWAYS"/>
+                                <Button fx:id="myFriendCodeCopyBtn" text="%copy_btn" styleClass="copy-btn"
+                                        onAction="#onCopyMyFriendCode"/>
+                            </HBox>
+
+                            <Label text="%friends_my_about_label" styleClass="toggle-label"/>
+                            <TextArea fx:id="myAboutArea" styleClass="about-input" wrapText="true"
+                                      prefRowCount="3" promptText="%friends_my_about_placeholder"/>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <Label text="%friends_my_about_hint" styleClass="toggle-sub" wrapText="true"
+                                       HBox.hgrow="ALWAYS"/>
+                                <Button fx:id="myAboutSaveBtn" text="%friends_save_btn" styleClass="secondary-button"
+                                        onAction="#onSaveMyAbout"/>
+                            </HBox>
+                        </VBox>
+                    </HBox>
+                    <Label text="%friends_profile_hint" styleClass="toggle-sub" wrapText="true"/>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== PALETTE EDITOR =====
+             The rows of colour pickers and gradient editors are built in code by
+             ui/PaletteEditor, from whatever palette is active - the same component
+             the tests drive directly. -->
+        <StackPane fx:id="paletteOverlay" styleClass="modal-scrim" visible="false" managed="false">
+            <VBox styleClass="modal-card, palette-card" prefWidth="760" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+                <HBox styleClass="modal-header" alignment="CENTER_LEFT">
+                    <Label text="%palette_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button styleClass="modal-close" onAction="#onClosePaletteEditor">
+                        <graphic><FontIcon iconLiteral="fth-x" iconSize="14"/></graphic>
+                    </Button>
+                </HBox>
+                <VBox styleClass="modal-body" spacing="10" VBox.vgrow="ALWAYS">
+                    <Label text="%palette_hint" styleClass="toggle-sub" wrapText="true"/>
+                    <ScrollPane styleClass="screen-scroll" fitToWidth="true"
+                                hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" VBox.vgrow="ALWAYS">
+                        <VBox fx:id="paletteEditorRows" spacing="12"/>
+                    </ScrollPane>
+                </VBox>
+                <HBox styleClass="modal-body" spacing="10" alignment="CENTER_RIGHT">
+                    <Button text="%palette_reset_btn" styleClass="secondary-button" onAction="#onResetPalette"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="%cancel_btn" styleClass="secondary-button" onAction="#onClosePaletteEditor"/>
+                    <Button text="%palette_save_btn" styleClass="play-btn, modal-create-btn" onAction="#onSavePalette"/>
+                </HBox>
+            </VBox>
+        </StackPane>
+
+        <!-- ===== TOAST STACK ===== -->
+        <VBox fx:id="toastStack" styleClass="toast-stack" alignment="BOTTOM_CENTER" spacing="8"
+              pickOnBounds="false" maxWidth="360" StackPane.alignment="BOTTOM_CENTER"/>
+
+    </StackPane>
+
+</StackPane>

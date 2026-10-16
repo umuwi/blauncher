@@ -1,0 +1,62 @@
+// BL Core: the BLauncher badge next to nicknames and BLauncher capes.
+//
+// One source tree, one build per Minecraft version:  gradlew build -Pmc=1.21.4
+// src/common is plain Java (the registry client), src/mc<version> holds the mixins, whose
+// targets move between game versions. versions/<mc>.properties pins mappings and the two
+// Fabric API modules that are nested (jar-in-jar) for the badge font to load: the loader
+// picks one copy of each when the modpack ships Fabric API too, so they never clash.
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+}
+
+def mc = (project.findProperty('mc') ?: '1.21.4') as String
+def vp = new Properties()
+file("versions/${mc}.properties").withInputStream { vp.load(it) }
+
+version = "${project.mod_version}+mc${mc}"
+group = "ru.blauncher"
+
+base {
+    archivesName = "blcore"
+}
+
+repositories {
+    maven { url = "https://maven.fabricmc.net/" }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${vp.minecraft_version}"
+    mappings "net.fabricmc:yarn:${vp.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    ["fabric-api-base", "fabric-resource-loader-v0"].each { m ->
+        def dep = fabricApi.module(m, vp.fabric_version)
+        modImplementation dep
+        include dep
+    }
+}
+
+sourceSets {
+    main {
+        java { srcDirs = ["src/common/java", "src/mc${vp.source_set}/java"] }
+        resources { srcDirs = ["src/common/resources"] }
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mc_range", vp.mc_range
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version, "mc_range": vp.mc_range
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 21
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}

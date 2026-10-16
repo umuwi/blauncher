@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "blcore",
+  "version": "${version}",
+  "name": "BL Core",
+  "description": "Значок BLauncher у ника и плащи игроков BLauncher. Подключается лаунчером при запуске, в папке mods его нет.",
+  "authors": ["BLauncher"],
+  "contact": { "homepage": "https://blauncher.ru" },
+  "license": "All-Rights-Reserved",
+  "icon": "assets/blcore/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["ru.blauncher.blcore.BlCore"]
+  },
+  "mixins": ["blcore.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "${mc_range}",
+    "java": ">=21",
+    "fabric-resource-loader-v0": "*"
+  }
+}
