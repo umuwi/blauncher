@@ -657,23 +657,31 @@ public final class VpsInstaller {
 
         // Моды, которые лаунчер клал раньше, а в сборке их больше нет, — убрать; чужие (положенные
         // руками) — не трогать. Та же логика, что у локального сервера (GameLaunchService.syncServerMods).
+        //
+        // Внутри папки сервера всё делает minecraft, а не root (проверка безопасности 26.10.2026).
+        // Папка mods и файл-метка принадлежат minecraft, а от его имени работает код модов и
+        // плагинов: заражённый мод мог подменить mods ссылкой на /etc и вписать в метку любые имена,
+        // и при следующей установке root по его указке удалил бы чужие .jar, положил файлы в чужую
+        // папку, а «install -d -o minecraft» на ссылке отдал бы ему саму папку. Root только кладёт
+        // моды в свою папку H рядом (/opt/blauncher принадлежит root — подменить её minecraft не
+        // может), остальное — runuser: по ссылкам он попадает лишь туда, куда ему и так можно.
         String modsDir = r.dir + "/mods";
-        VpsSession.ExecResult prev = r.root("cat " + Shell.quote(modsDir + "/" + MODS_MARKER) + " 2>/dev/null", SHORT);
-        StringBuilder rm = new StringBuilder();
-        if (prev.ok()) {
-            for (String n : prev.stdout().split("\n")) {
-                n = n.trim();
-                if (n.isEmpty() || names.contains(n) || n.contains("/") || !n.endsWith(".jar")) continue;
-                rm.append(' ').append(Shell.quote(modsDir + "/" + n));
-            }
-        }
+        String handoff = BASE_DIR + "/.mods-" + r.id;
         String staged = r.stagingAbs + "/mods";
-        String cmd = "install -d -o " + MC_USER + " -g " + MC_USER + " -m 750 " + Shell.quote(modsDir)
-                + (rm.isEmpty() ? "" : " && rm -f --" + rm)
-                + " && find " + Shell.quote(staged) + " -maxdepth 1 -type f -name '*.jar' -exec install -o " + MC_USER
-                + " -g " + MC_USER + " -m 640 -t " + Shell.quote(modsDir) + " {} +";
+        String put = "rm -rf " + Shell.quote(handoff)
+                + " && install -d -o root -g " + MC_USER + " -m 750 " + Shell.quote(handoff)
+                + " && find " + Shell.quote(staged) + " -maxdepth 1 -type f -name '*.jar' -exec install -o root -g "
+                + MC_USER + " -m 640 -t " + Shell.quote(handoff) + " {} +";
+        String sync = "set -e; D=\"$1\"; H=\"$2\"; M=\"$3\"; mkdir -p -- \"$D\"; "
+                // убрать прежние наши моды, которых нет в новой сборке
+                + "if [ -f \"$D/$M\" ]; then while IFS= read -r n; do case \"$n\" in ''|*/*) continue;; *.jar) "
+                + "[ -e \"$H/$n\" ] || rm -f -- \"$D/$n\";; esac; done < \"$D/$M\"; fi; "
+                + "for f in \"$H\"/*.jar; do [ -e \"$f\" ] || continue; cp -f -- \"$f\" \"$D/\"; done; "
+                + "for f in \"$H\"/*.jar; do [ -e \"$f\" ] && basename -- \"$f\"; done > \"$D/$M\"; exit 0";
+        String cmd = put + " && runuser -u " + MC_USER + " -- sh -c " + Shell.quote(sync) + " sh "
+                + Shell.quote(modsDir) + " " + Shell.quote(handoff) + " " + Shell.quote(MODS_MARKER)
+                + "; rc=$?; rm -rf " + Shell.quote(handoff) + "; exit $rc";
         r.rootOk(cmd, DOWNLOAD, "Не удалось разложить моды в папку сервера");
-        writeFile(r, modsDir + "/" + MODS_MARKER, (String.join("\n", names) + "\n").getBytes(StandardCharsets.UTF_8), MC_USER, "640");
         r.done(r.plan.migrateDir() != null ? "модов с локального сервера: " + jars.size()
                 : "модов из сборки «" + r.plan.profileName() + "»: " + jars.size());
     }
@@ -986,6 +994,9 @@ public final class VpsInstaller {
                 + "WorkingDirectory=" + r.dir + "\n"
                 + "Environment=JAVA_HOME=" + javaHome + "\n"
                 + "Environment=PATH=" + javaHome + "/bin:/usr/local/bin:/usr/bin:/bin\n"
+                // Закрыть порт RCON снаружи перед каждым запуском: правила nft/iptables не переживают
+                // перезагрузку. «+» — от root, хотя служба от minecraft; «-» — сбой не мешает запуску.
+                + "ExecStartPre=-+" + RCON_GUARD + " " + r.rconPort + " " + r.plan.port() + "\n"
                 + "ExecStart=" + execStart + "\n"
                 + "Restart=on-failure\n"
                 + "RestartSec=10\n"
@@ -1020,19 +1031,60 @@ public final class VpsInstaller {
 
     // ---------------------------------------------------------------- 9. брандмауэр
 
+    /**
+     * Скрипт, закрывающий порт RCON для всего, кроме самого сервера (26.10.2026, проверка
+     * безопасности). Minecraft слушает RCON на всех адресах (server-ip пустой), а закрывали его
+     * только через ufw — на свежем VPS ufw обычно выключен, а в Debian его нет, и консоль сервера
+     * смотрела в интернет. Лаунчеру RCON нужен лишь через SSH-туннель на 127.0.0.1, поэтому снаружи
+     * порт закрыт всегда: nft (таблица inet blauncher — IPv4 и IPv6 сразу), иначе iptables/ip6tables.
+     * Второй аргумент — игровой порт этого сервера: если он раньше был чьим-то портом RCON (сервер
+     * удалили, порт отдали другому), его правило снимается, чтобы не закрыть игру.
+     * Выход 3 — нечем закрыть (нет ни nft, ни iptables).
+     */
+    private static final String RCON_GUARD = BASE_DIR + "/bin/bl-rcon-guard";
+    private static final String RCON_GUARD_SCRIPT = "#!/bin/sh\n"
+            + "# Создано BLauncher: порт RCON — только для 127.0.0.1 (лаунчер ходит в него через SSH-туннель).\n"
+            + "R=\"$1\"; G=\"$2\"\n"
+            + "case \"$R\" in ''|*[!0-9]*) exit 2;; esac\n"
+            + "case \"$G\" in ''|*[!0-9]*) G=;; esac\n"
+            + "if command -v nft >/dev/null 2>&1; then\n"
+            + "  nft add table inet blauncher || exit 1\n"
+            + "  nft add chain inet blauncher input '{ type filter hook input priority -10; policy accept; }' || exit 1\n"
+            + "  nft add set inet blauncher rcon '{ type inet_service; }' || exit 1\n"
+            + "  nft list chain inet blauncher input | grep -q '@rcon' || nft add rule inet blauncher input iifname != lo tcp dport @rcon drop || exit 1\n"
+            + "  [ -n \"$G\" ] && nft delete element inet blauncher rcon \"{ $G }\" 2>/dev/null\n"
+            + "  nft add element inet blauncher rcon \"{ $R }\" || exit 1\n"
+            + "  exit 0\n"
+            + "fi\n"
+            + "found=\n"
+            + "for T in iptables ip6tables; do\n"
+            + "  command -v $T >/dev/null 2>&1 || continue\n"
+            + "  found=1\n"
+            + "  [ -n \"$G\" ] && $T -D INPUT -p tcp --dport \"$G\" ! -i lo -j DROP 2>/dev/null\n"
+            + "  $T -C INPUT -p tcp --dport \"$R\" ! -i lo -j DROP 2>/dev/null || $T -I INPUT -p tcp --dport \"$R\" ! -i lo -j DROP || exit 1\n"
+            + "done\n"
+            + "[ -n \"$found\" ] || exit 3\n"
+            + "exit 0\n";
+
     private void firewall(Run r) throws VpsException {
         r.step(Step.FIREWALL, "порт " + r.plan.port() + "/tcp");
+        r.rootOk("install -d -m 755 " + Shell.quote(BASE_DIR + "/bin"), SHORT, "Не удалось создать " + BASE_DIR + "/bin");
+        writeFile(r, RCON_GUARD, RCON_GUARD_SCRIPT.getBytes(StandardCharsets.UTF_8), "root", "755");
+        VpsSession.ExecResult g = r.root(RCON_GUARD + " " + r.rconPort + " " + r.plan.port(), SHORT);
+        String rcon = g.ok() ? "RCON (" + r.rconPort + ") закрыт снаружи"
+                : g.exitCode() == 3 ? "на VPS нет ни nft, ни iptables — закройте порт RCON " + r.rconPort + " в брандмауэре хостера"
+                : "закрыть порт RCON " + r.rconPort + " не удалось — закройте его в брандмауэре хостера";
         if (!r.s.exec("command -v ufw >/dev/null 2>&1 || test -x /usr/sbin/ufw", SHORT).ok()) {
-            r.done("ufw не установлен — если у хостера есть свой брандмауэр, откройте в его панели порт " + r.plan.port());
+            r.done("ufw не установлен — если у хостера есть свой брандмауэр, откройте в его панели порт " + r.plan.port() + "; " + rcon);
             return;
         }
         VpsSession.ExecResult st = r.root("ufw status", SHORT);
         if (!st.ok() || !st.stdout().contains("Status: active")) {
-            r.done("ufw выключен — порт открыт; RCON наружу не открываем");
+            r.done("ufw выключен — игровой порт открыт; " + rcon);
             return;
         }
         r.rootOk("ufw allow " + r.plan.port() + "/tcp comment 'BLauncher Minecraft'", SHORT, "ufw не открыл порт");
-        r.done("в ufw открыт порт " + r.plan.port() + "/tcp; RCON (" + r.rconPort + ") закрыт снаружи");
+        r.done("в ufw открыт порт " + r.plan.port() + "/tcp; " + rcon);
     }
 
     // ---------------------------------------------------------------- 10. запуск
