@@ -99,6 +99,9 @@ public class VpsPanelController {
         void stat(String event, String detail);
         /** Строка интерфейса на языке лаунчера (плитки server.properties). */
         String tr(String key);
+        // ---- несколько серверов на одном VPS (26.10.2026)
+        /** Все записи «Мои серверы» — чтобы найти соседей по машине. */
+        List<ServerEntry> allServers();
     }
 
     /** ButtonType.CANCEL подписан «Cancel» независимо от языка лаунчера. */
@@ -121,6 +124,8 @@ public class VpsPanelController {
     private VBox sshPanel;
     private Label infoLabel, hostKeyLabel, sshStatusLabel;
     private Button checkBtn;
+    /** «Серверы на этом VPS»: полоса памяти, соседи, «+ Ещё сервер». */
+    private VpsSplitPanel split;
 
     /** Идёт подключение — окно создания закрывать нельзя, см. MainController.onCloseCreateServer. */
     private volatile boolean busy;
@@ -164,6 +169,8 @@ public class VpsPanelController {
         this.hostKeyLabel = hostKeyLabel;
         this.sshStatusLabel = sshStatusLabel;
         this.checkBtn = checkBtn;
+        split = new VpsSplitPanel(host, secrets, this, this::onCapacity);
+        sshPanel.getChildren().add(split.build());
         buildInstallSection();
         sshPanel.getChildren().add(installSection);
     }
@@ -491,6 +498,7 @@ public class VpsPanelController {
         hostKeyLabel.setText("Ключ сервера: " + s.getSshHostKeyType() + " " + s.getSshHostKey());
         sshStatusLabel.setText(installedSummary(s));
         checkBtn.setDisable(false);
+        split.render(s);
         renderInstall(s);
     }
 
@@ -622,9 +630,12 @@ public class VpsPanelController {
     private VpsInstaller.Plan lastPlan;
     private String lastPlanServerId;
     private boolean lastInstallFailed;
-    /** Память VPS (МБ) по id сервера: читается раз за сеанс, чтобы не предлагать больше, чем есть. */
-    private final Map<String, Long> vpsMemoryMb = new HashMap<>();
-    private final java.util.Set<String> memoryRequests = new java.util.HashSet<>();
+    /** Сколько памяти (МБ) ещё можно дать серверу с этим id — с учётом соседей по VPS (VpsCapacity). */
+    private final Map<String, Integer> vpsMaxRamMb = new HashMap<>();
+    /** Ядер у VPS этого сервера. */
+    private final Map<String, Integer> vpsCpus = new HashMap<>();
+    private ComboBox<Integer> cpuCombo;
+    private VBox cpuBox;
     /** Поздний ответ о версиях загрузчика или модах сборки не должен перетереть более новый выбор. */
     private int loaderRequestSeq, buildInfoSeq;
     /** Сервер, для которого сейчас нарисована форма. */
@@ -708,7 +719,21 @@ public class VpsPanelController {
         installPortField.setPrefColumnCount(6);
         VBox portBox = field("Порт Minecraft", installPortField);
         HBox.setHgrow(portBox, Priority.NEVER);
-        HBox ramRow = new HBox(10, field("Память серверу", ramCombo), portBox);
+        // С третьим полем в ряду подпись «Порт Minecraft» обрезалась до «Порт Mine…».
+        portBox.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        // Ядра (26.10.2026): на VPS с несколькими серверами один нагруженный не должен отъедать
+        // процессор у остальных. По умолчанию — без ограничения; на одноядерном VPS поле скрыто.
+        cpuCombo = new ComboBox<>();
+        cpuCombo.setConverter(new StringConverter<>() {
+            @Override public String toString(Integer n) {
+                if (n == null) return "";
+                return n == 0 ? host.tr("vsplit_cpu_all") : host.tr("vsplit_cpu_n").replace("{n}", String.valueOf(n));
+            }
+            @Override public Integer fromString(String s) { return null; }
+        });
+        cpuBox = field(host.tr("vsplit_cpu_label"), cpuCombo);
+        show(cpuBox, false);
+        HBox ramRow = new HBox(10, field("Память серверу", ramCombo), cpuBox, portBox);
 
         eulaCheck = new CheckBox("Я принимаю");
         eulaCheck.selectedProperty().addListener((o, a, b) -> updateInstallButton());
@@ -1013,11 +1038,15 @@ public class VpsPanelController {
     }
 
     private void refreshRamOptions(ServerEntry s) {
-        Long mem = vpsMemoryMb.get(s.getId());
+        Integer max = vpsMaxRamMb.get(s.getId());
         List<Integer> opts = new ArrayList<>();
-        long limit = mem == null ? Long.MAX_VALUE : mem - VpsInstaller.SYSTEM_RESERVE_MB;
+        long limit = max == null ? Long.MAX_VALUE : max;
         for (int o : RAM_OPTIONS_MB) if (o <= limit) opts.add(o);
-        if (opts.isEmpty() && mem != null) opts.add((int) Math.max(512, limit / 128 * 128));
+        // Маленький остаток (VPS на 1 ГБ или почти всё отдано соседям) — округлённый вниз, но не
+        // меньше 512: на меньшем Minecraft не стартует, и тогда честнее не предлагать ничего.
+        if (opts.isEmpty() && max != null && limit >= 512) opts.add((int) (limit / 128 * 128));
+        ramCombo.setPromptText(opts.isEmpty() && max != null ? host.tr("vsplit_ram_none") : null);
+        refreshCpuOptions(s);
         Integer prev = ramCombo.getValue();
         ramCombo.setItems(FXCollections.observableArrayList(opts));
         if (prev != null && opts.contains(prev)) {
@@ -1033,23 +1062,38 @@ public class VpsPanelController {
         updateInstallButton();
     }
 
+    private void refreshCpuOptions(ServerEntry s) {
+        Integer cpus = vpsCpus.get(s.getId());
+        boolean many = cpus != null && cpus > 1;
+        show(cpuBox, many);
+        if (!many) {
+            cpuCombo.setItems(FXCollections.observableArrayList(0));
+            cpuCombo.getSelectionModel().select(0);
+            return;
+        }
+        Integer prev = cpuCombo.getValue();
+        List<Integer> opts = new ArrayList<>(List.of(0));
+        for (int n = 1; n < cpus; n++) opts.add(n);
+        cpuCombo.setItems(FXCollections.observableArrayList(opts));
+        cpuCombo.getSelectionModel().select(prev != null && opts.contains(prev) ? prev : Integer.valueOf(0));
+    }
+
+    /**
+     * Снимок VPS от «Серверы на этом VPS» (VpsSplitPanel). Раньше форма читала здесь только MemTotal;
+     * с 26.10.2026 — сколько осталось после соседей. Если снимок не пришёл (нет связи) — полный
+     * список, а установка сама проверит память на шаге «Проверка».
+     */
+    private void onCapacity(ServerEntry s, com.example.launcher.service.vps.VpsCapacity.Snapshot snap) {
+        vpsMaxRamMb.put(s.getId(), snap.maxRamFor(s.getId()));
+        vpsCpus.put(s.getId(), snap.cpus());
+        if (renderedInstallFor != null && s.getId().equals(renderedInstallFor.getId()) && !s.isSshInstalled()) {
+            refreshRamOptions(renderedInstallFor);
+        }
+    }
+
     private void requestVpsMemory(ServerEntry s) {
-        String id = s.getId();
-        if (vpsMemoryMb.containsKey(id) || !memoryRequests.add(id)) return;
-        host.runInBackground(() -> {
-            try (VpsSession session = openSession(s)) {
-                String kb = session.exec("awk '/^MemTotal:/ {print $2}' /proc/meminfo", Duration.ofSeconds(20)).stdout().trim();
-                long mb = Long.parseLong(kb) / 1024;
-                Platform.runLater(() -> {
-                    vpsMemoryMb.put(id, mb);
-                    if (renderedInstallFor != null && id.equals(renderedInstallFor.getId())) refreshRamOptions(renderedInstallFor);
-                });
-            } catch (VpsException | RuntimeException e) {
-                // Не страшно: предложим полный список, а установка сама проверит память на шаге «Проверка».
-            } finally {
-                Platform.runLater(() -> memoryRequests.remove(id));
-            }
-        });
+        com.example.launcher.service.vps.VpsCapacity.Snapshot snap = split.snapshot(s);
+        if (snap != null) onCapacity(s, snap);
     }
 
     private void onInstall() {
@@ -1082,6 +1126,7 @@ public class VpsPanelController {
         int port = parsePort(installPortField.getText(), "Порт Minecraft");
         // Ниже 1024 порты привилегированные: сервер от пользователя minecraft их не откроет.
         if (port < 1024) throw new IllegalArgumentException("Порт Minecraft: от 1024 до 65535");
+        int cpus = cpuCombo.getValue() == null ? 0 : cpuCombo.getValue();
         if (modeMoveTab.isSelected()) {
             ServerEntry l = selectedLocal();
             if (l == null) throw new IllegalArgumentException("Выберите локальный сервер");
@@ -1098,7 +1143,7 @@ public class VpsPanelController {
                     : l.getLoaderVersion() != null && !l.getLoaderVersion().isBlank() ? l.getLoaderVersion()
                     : ServerMigration.detectLoaderVersion(dir, core, l.getVersion());
             return new VpsInstaller.Plan(s.getId(), l.getVersion(), core, loaderVersion, ram, port, true, mods, null,
-                    Files.isDirectory(dir) ? dir : null);
+                    Files.isDirectory(dir) ? dir : null, null, cpus);
         }
         // Проверка плиток до чтения сборки: неверное значение — сразу понятная ошибка.
         Map<String, String> props = ServerProps.cleanAll(propsEditor.values());
@@ -1110,14 +1155,14 @@ public class VpsPanelController {
             List<Path> mods = core.takesMods() ? VpsInstaller.collectServerMods(host.modsDirFor(p))[0] : List.of();
             return new VpsInstaller.Plan(s.getId(), p.getVersionId(), core,
                     core.needsLoaderVersion() ? p.getModLoaderVersion() : null, ram, port, true, mods, p.getName(),
-                    null, props);
+                    null, props, cpus);
         }
         VpsInstaller.Core core = coreCombo.getValue();
         String mc = versionCombo.getValue();
         if (core == null || mc == null) throw new IllegalArgumentException("Выберите ядро и версию Minecraft");
         String loader = core.needsLoaderVersion() ? loaderVersionCombo.getValue() : null;
         if (core.needsLoaderVersion() && loader == null) throw new IllegalArgumentException("Нет версии " + core.label + " для " + mc);
-        return new VpsInstaller.Plan(s.getId(), mc, core, loader, ram, port, true, List.of(), null, null, props);
+        return new VpsInstaller.Plan(s.getId(), mc, core, loader, ram, port, true, List.of(), null, null, props, cpus);
     }
 
     private void startInstall(ServerEntry s, VpsInstaller.Plan plan) {
@@ -1168,6 +1213,7 @@ public class VpsPanelController {
         s.setSshProfile(plan.profileName());
         s.setSshInstalled(true);
         host.saveServers();
+        split.invalidate(s);
         installForm.setDisable(false);
         eulaCheck.setSelected(false);
         host.refreshServerViews();
@@ -1218,25 +1264,68 @@ public class VpsPanelController {
             host.showToast("Дождитесь конца установки на «" + s.getName() + "»", "info");
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Убрать «" + s.getName() + "» из лаунчера? Лаунчер удалит свой SSH-ключ с VPS и забудет "
-                        + "сохранённые пароли. Сам VPS и файлы на нём не трогаются."
-                        + (s.isSshInstalled() ? "\n\nMinecraft-сервер на VPS продолжит работать (служба "
-                        + s.getSshService() + ", папка " + s.getSshServerDir() + ")." : ""));
+        // Несколько серверов на одном VPS (26.10.2026) ходят по одному ключу: пока жив хоть один
+        // сосед, ключ с VPS не убираем — иначе он потерял бы доступ.
+        boolean keyShared = false;
+        for (ServerEntry o : host.allServers()) {
+            if (o != s && s.getSshPublicKey() != null && s.getSshPublicKey().equals(o.getSshPublicKey())) keyShared = true;
+        }
+        Label text = new Label("Убрать «" + s.getName() + "» из лаунчера? "
+                + (keyShared ? "Другие серверы на этом VPS останутся, SSH-ключ лаунчера на VPS тоже."
+                        : "Лаунчер удалит свой SSH-ключ с VPS и забудет сохранённые пароли.")
+                + (s.isSshInstalled() ? "" : " Сам VPS и файлы на нём не трогаются."));
+        text.setWrapText(true);
+        CheckBox wipe = new CheckBox("Удалить и сам Minecraft-сервер с VPS: остановить, убрать службу и папку "
+                + s.getSshServerDir() + " — память и порт освободятся для других серверов. Бэкапы останутся "
+                + "в /opt/blauncher/backups.");
+        wipe.setWrapText(true);
+        Label keep = new Label("Без галочки Minecraft-сервер на VPS продолжит работать (служба " + s.getSshService()
+                + ") и будет и дальше занимать свою память.");
+        keep.setWrapText(true);
+        keep.getStyleClass().add("toggle-sub");
+        VBox content = new VBox(10, text);
+        if (s.isSshInstalled()) content.getChildren().addAll(wipe, keep);
+        content.setPrefWidth(520);
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.getDialogPane().setContent(content);
         confirm.setHeaderText(null);
         confirm.setTitle("Удаление сервера");
         ButtonType remove = new ButtonType("Удалить", ButtonBar.ButtonData.OK_DONE);
         confirm.getButtonTypes().setAll(remove, CANCEL);
         Optional<ButtonType> r = confirm.showAndWait();
         if (r.isEmpty() || r.get() != remove) return;
+        boolean uninstall = s.isSshInstalled() && wipe.isSelected();
+        boolean removeKey = !keyShared;
+        if (uninstall) installingId = s.getId();   // повторное удаление/установка, пока идёт уборка, — нельзя
 
         host.runInBackground(() -> {
             String keyNote = null;
+            String wipeNote = null;
             try (VpsSession session = openSession(s)) {
-                VpsConnector.removeAuthorizedKey(session, s.getSshPublicKey());
+                if (uninstall) {
+                    try {
+                        new com.example.launcher.service.vps.VpsServerManager().uninstall(session,
+                                new com.example.launcher.service.vps.VpsServerManager.Srv(s.getId(), s.getSshServerDir(),
+                                        s.getSshService(), s.getSshRconPort()), s.getPort());
+                    } catch (VpsException | IllegalArgumentException e) {
+                        wipeNote = e.getMessage();
+                    }
+                }
+                if (removeKey) VpsConnector.removeAuthorizedKey(session, s.getSshPublicKey());
             } catch (VpsException e) {
                 keyNote = e.getMessage();
+                if (uninstall && wipeNote == null) wipeNote = e.getMessage();
             }
+            if (uninstall && wipeNote != null) {
+                // Сервер на VPS остался — запись в лаунчере не стираем, иначе им уже не управлять.
+                String why = wipeNote;
+                Platform.runLater(() -> {
+                    installingId = null;
+                    host.showToast("Не удалось убрать сервер с VPS: " + why + ". Запись в лаунчере оставлена.", "error");
+                });
+                return;
+            }
+            if (!removeKey) keyNote = null;
             try {
                 secrets.removePrefix(s.secretPrefix());
             } catch (IOException e) {
@@ -1244,9 +1333,15 @@ public class VpsPanelController {
             }
             String note = keyNote;
             Platform.runLater(() -> {
+                if (uninstall) installingId = null;
+                split.invalidate(s);
                 host.removeServerFromList(s);
                 if (note == null) {
-                    host.showToast("Сервер «" + s.getName() + "» удалён из лаунчера, ключ убран с VPS", "success");
+                    host.showToast("Сервер «" + s.getName() + "» удалён "
+                            + (uninstall ? "с VPS и из лаунчера" : "из лаунчера")
+                            + (removeKey ? ", ключ убран с VPS" : ""), "success");
+                    if (uninstall) host.log("[VPS] «" + s.getName() + "» удалён с VPS: служба " + s.getSshService()
+                            + " и папка " + s.getSshServerDir() + " убраны, бэкапы оставлены");
                 } else {
                     String comment = s.getSshPublicKey() == null ? "" : s.getSshPublicKey().replaceAll("^\\S+\\s+\\S+\\s*", "");
                     host.showToast("Сервер удалён из лаунчера, но ключ с VPS убрать не удалось (" + note

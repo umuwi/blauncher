@@ -142,6 +142,38 @@ public final class VpsServerManager {
                 + Shell.quote(srv.service()), STOP, "Сервер не перезапустился");
     }
 
+    /**
+     * Убрать сервер с VPS совсем (26.10.2026, несколько серверов на одном VPS): без этого память
+     * под удалённый из лаунчера сервер так и числилась бы занятой — его служба в автозапуске.
+     * Останавливает и стирает службу и автобэкап, папку сервера, закрывает его порт в ufw.
+     * Бэкапы ({@code /opt/blauncher/backups/<id>}) остаются: это последняя страховка, если удалили
+     * не тот сервер. Java и пользователь minecraft общие с соседями — их не трогаем.
+     */
+    public void uninstall(VpsSession s, Srv srv, int mcPort) throws VpsException {
+        String unit = autoUnit(srv);
+        String ru = restartUnit(srv);
+        String svc = Shell.quote(srv.service());
+        String cmd = "systemctl disable --now " + Shell.quote(ru + ".timer") + " 2>/dev/null; "
+                + "systemctl disable --now " + svc + " 2>/dev/null; "
+                + "systemctl disable --now " + Shell.quote(unit + ".timer") + " 2>/dev/null; "
+                + "rm -f " + Shell.quote("/etc/systemd/system/" + srv.service() + ".service") + " "
+                + Shell.quote("/etc/systemd/system/" + unit + ".service") + " "
+                + Shell.quote("/etc/systemd/system/" + unit + ".timer") + " "
+                + Shell.quote(BIN_DIR + "/" + unit + ".sh") + " "
+                + Shell.quote("/etc/systemd/system/" + ru + ".service") + " "
+                + Shell.quote("/etc/systemd/system/" + ru + ".timer") + " "
+                + Shell.quote(BIN_DIR + "/" + ru + ".sh") + "; "
+                + "systemctl daemon-reload; systemctl reset-failed " + svc + " 2>/dev/null; "
+                + "rm -rf -- " + Shell.quote(srv.dir());
+        if (mcPort >= 1024 && mcPort <= 65535) {
+            // Порт у каждого сервера свой (VpsInstaller не даёт его соседу) — правило больше никому не нужно.
+            cmd += "; if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then "
+                    + "ufw delete allow " + mcPort + "/tcp >/dev/null 2>&1; fi";
+        }
+        cmd += "; test ! -e " + Shell.quote(srv.dir());
+        rootOk(s, cmd, STOP, "Не удалось убрать сервер с VPS");
+    }
+
     // ================================================================ консоль
 
     /**
@@ -477,6 +509,7 @@ public final class VpsServerManager {
                     + "; systemctl daemon-reload", SHORT, "Не удалось выключить автобэкап");
             return;
         }
+        ensurePython(s);
         String unitSvc = "# Создано BLauncher: автобэкап сервера " + srv.id() + "\n"
                 + "[Unit]\nDescription=BLauncher backup " + srv.id() + "\n\n"
                 + "[Service]\nType=oneshot\nExecStart=" + script + "\nNice=10\nIOSchedulingClass=idle\n";
@@ -496,8 +529,31 @@ public final class VpsServerManager {
         rootOk(s, cmd, SHORT, "Не удалось включить автобэкап");
     }
 
+    /**
+     * python3 для RCON из скриптов VPS. 26.10.2026: на минимальном Debian 13 его нет — плановый перезапуск
+     * прошёл без предупреждений в чате, а автобэкап тем же путём молча делал копию без паузы автосохранения.
+     */
+    static void ensurePython(VpsSession s) throws VpsException {
+        if (s.exec("command -v python3", SHORT).ok()) return;
+        rootOk(s, "export DEBIAN_FRONTEND=noninteractive; "
+                        + "apt-get -o DPkg::Lock::Timeout=300 install -y -qq python3-minimal "
+                        + "|| { apt-get -o DPkg::Lock::Timeout=300 update -qq && apt-get -o DPkg::Lock::Timeout=300 install -y -qq python3-minimal; }",
+                Duration.ofMinutes(15), "Не удалось поставить python3 (нужен, чтобы VPS сам слал команды серверу)");
+    }
+
     static String autoScript(Srv srv) {
-        String py = String.join("\n",
+        String py = RCON_PY;
+        return "#!/bin/bash\n"
+                + "# Создано BLauncher: ежедневный бэкап сервера " + srv.id() + ". Хранит последние "
+                + AUTO_BACKUP_KEEP + " автокопий; ручные бэкапы не трогает.\n"
+                + autoScriptBody(srv, py);
+    }
+
+    /**
+     * RCON-клиент на python3 для скриптов, которые VPS выполняет сам, без ПК (автобэкап, плановый
+     * перезапуск): пароль и порт берёт из server.properties, команды — из аргументов.
+     */
+    static final String RCON_PY = String.join("\n",
                 "import re, socket, struct, sys",
                 "props = open(sys.argv[1], encoding='utf-8', errors='replace').read()",
                 "def g(k):",
@@ -520,10 +576,9 @@ public final class VpsServerManager {
                 "    return struct.unpack('<i', recv(n)[:4])[0]",
                 "if pkt(1, 3, g('rcon.password')) == -1: sys.exit(3)",
                 "for c in sys.argv[2:]: pkt(2, 2, c)");
-        return "#!/bin/bash\n"
-                + "# Создано BLauncher: ежедневный бэкап сервера " + srv.id() + ". Хранит последние "
-                + AUTO_BACKUP_KEEP + " автокопий; ручные бэкапы не трогает.\n"
-                + "set -u\n"
+
+    private static String autoScriptBody(Srv srv, String py) {
+        return "set -u\n"
                 + "DIR=" + Shell.quote(srv.dir()) + "\n"
                 + "BK=" + Shell.quote(srv.backupDir()) + "\n"
                 + "SVC=" + Shell.quote(srv.service()) + "\n"
@@ -549,6 +604,157 @@ public final class VpsServerManager {
                 + "  printf '%s\\n' \"$LIST\" | tail -n \"$KEEP\" > \"$BK/auto.list\"\n"
                 + "fi\n"
                 + "echo \"бэкап $NAME готов\"\n";
+    }
+
+    // ================================================================ память и ядра (26.10.2026)
+
+    /** Ограничение ядер службы: 0 — без ограничения. CPUQuotaPerSecUSec = «2s» при CPUQuota=200%. */
+    public int cpuLimit(VpsSession s, Srv srv) throws VpsException {
+        String v = s.exec("systemctl show -p CPUQuotaPerSecUSec --value " + Shell.quote(srv.service()), SHORT).stdout().trim();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d+)(?:\\.\\d+)?s$").matcher(v);
+        return m.matches() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    /**
+     * Сменить память и ядра установленного сервера без переустановки — например, перекинуть память с
+     * одного сервера VPS на другой. Правится юнит (метка памяти, -Xmx/-Xms, MemoryMax, CPUQuota) и
+     * user_jvm_args.txt у Forge/NeoForge; память проверяется по остатку VPS так же, как при установке.
+     * Новые значения начинают действовать после перезапуска — {@code restart} делает его сразу, если
+     * сервер работает.
+     */
+    public void setLimits(VpsSession s, Srv srv, int ramMb, int cpuCores, boolean restart) throws VpsException {
+        if (ramMb < 512 || ramMb > 1024 * 1024) throw new VpsException("Память серверу — от 512 МБ");
+        VpsCapacity.Snapshot cap = new VpsCapacity().read(s);
+        int max = cap.maxRamFor(srv.id());
+        if (ramMb > max) {
+            throw new VpsException("На VPS этому серверу можно дать не больше " + max + " МБ — остальное занято "
+                    + "системой и другими серверами");
+        }
+        if (cpuCores < 0 || cpuCores > cap.cpus()) throw new VpsException("На VPS ядер: " + cap.cpus());
+        VpsInstaller.Plan plan = new VpsInstaller.Plan(srv.id(), "1.0", VpsInstaller.Core.VANILLA, null, ramMb, 25565,
+                true, null, null, null, null, cpuCores);
+        String unit = Shell.quote("/etc/systemd/system/" + srv.service() + ".service");
+        int xms = Math.min(1024, ramMb);
+        StringBuilder cmd = new StringBuilder("set -e; U=").append(unit).append("; test -f \"$U\"; ")
+                // Юниты до 26.10.2026 без метки — добавляем её второй строкой.
+                .append("grep -q '^# BLauncher-ram=' \"$U\" || sed -i '1a # BLauncher-ram=0' \"$U\"; ")
+                .append("sed -i -E 's/^# BLauncher-ram=.*/# BLauncher-ram=").append(ramMb).append("/; ")
+                .append("s/-Xmx[0-9]+[KkMmGg]?/-Xmx").append(ramMb).append("M/g; ")
+                .append("s/-Xms[0-9]+[KkMmGg]?/-Xms").append(xms).append("M/g; ")
+                .append("/^MemoryMax=/d; /^CPUQuota=/d' \"$U\"; ");
+        for (String line : VpsInstaller.limits(plan).split("\n")) {
+            if (!line.isBlank()) cmd.append("sed -i '/^TimeoutStopSec=/a ").append(line).append("' \"$U\"; ");
+        }
+        cmd.append("grep -q '^MemoryMax=' \"$U\"; ")
+                // Forge/NeoForge берут память из user_jvm_args.txt; правим от имени minecraft, как всё в папке сервера.
+                .append("A=").append(Shell.quote(srv.dir() + "/user_jvm_args.txt")).append("; ")
+                .append("if [ -f \"$A\" ]; then ").append(AS_MC).append("sed -i -E ")
+                .append(Shell.quote("s/-Xmx[0-9]+[KkMmGg]?/-Xmx" + ramMb + "M/g; s/-Xms[0-9]+[KkMmGg]?/-Xms" + xms + "M/g"))
+                .append(" \"$A\"; fi; ")
+                .append("systemctl daemon-reload");
+        rootOk(s, cmd.toString(), SHORT, "Не удалось поменять память и ядра");
+        if (restart && s.exec("systemctl is-active --quiet " + Shell.quote(srv.service()), SHORT).ok()) restart(s, srv);
+    }
+
+    // ================================================================ плановый перезапуск (26.10.2026)
+
+    private static String restartUnit(Srv srv) {
+        return "blauncher-restart-" + srv.id().toLowerCase();
+    }
+
+    /** Час планового перезапуска по времени ПК (0–23) или -1 — выключен. */
+    public int restartHour(VpsSession s, Srv srv) throws VpsException {
+        String timer = "/etc/systemd/system/" + restartUnit(srv) + ".timer";
+        VpsSession.ExecResult r = s.exec("systemctl is-enabled --quiet " + Shell.quote(restartUnit(srv) + ".timer")
+                + " && sed -n 's/^# BLauncher-restart-hour=\\([0-9]*\\).*/\\1/p' " + Shell.quote(timer), SHORT);
+        if (!r.ok()) return -1;
+        try {
+            return Integer.parseInt(r.stdout().trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Каждый день в {@code hour}:00 по часовому поясу ПК: за 5 минут, за минуту и за 10 секунд игроки
+     * видят предупреждение в чате, затем служба перезапускается. Помогает серверам с модами, которые
+     * со временем съедают всё больше памяти. Делает сам VPS — ПК может быть выключен. -1 — выключить.
+     */
+    public void setRestartSchedule(VpsSession s, Srv srv, int hour, java.time.ZoneId pcZone) throws VpsException {
+        String unit = restartUnit(srv);
+        String script = BIN_DIR + "/" + unit + ".sh";
+        String svc = "/etc/systemd/system/" + unit + ".service";
+        String timer = "/etc/systemd/system/" + unit + ".timer";
+        if (hour < 0) {
+            rootOk(s, "systemctl disable --now " + Shell.quote(unit + ".timer") + " 2>/dev/null; rm -f "
+                    + Shell.quote(svc) + " " + Shell.quote(timer) + " " + Shell.quote(script)
+                    + "; systemctl daemon-reload", SHORT, "Не удалось выключить плановый перезапуск");
+            return;
+        }
+        if (hour > 23) throw new VpsException("Час перезапуска — от 0 до 23");
+        ensurePython(s);
+        String when = calendarFor(s, hour, pcZone);
+        String unitSvc = "# Создано BLauncher: плановый перезапуск сервера " + srv.id() + "\n"
+                + "[Unit]\nDescription=BLauncher scheduled restart " + srv.id() + "\n\n"
+                + "[Service]\nType=oneshot\nExecStart=" + script + "\nTimeoutStartSec=15min\n";
+        String unitTimer = "# Создано BLauncher: плановый перезапуск сервера " + srv.id() + "\n"
+                + "# BLauncher-restart-hour=" + hour + "\n"
+                + "[Unit]\nDescription=BLauncher daily restart " + srv.id() + "\n\n"
+                // Без Persistent: пропущенный ночной перезапуск не нужен днём, посреди игры.
+                + "[Timer]\nOnCalendar=" + when + "\n\n"
+                + "[Install]\nWantedBy=timers.target\n";
+        String cmd = "install -d -m 755 " + Shell.quote(BIN_DIR)
+                + " && printf '%s' " + Shell.quote(restartScript(srv)) + " > " + Shell.quote(script)
+                + " && chmod 700 " + Shell.quote(script)
+                + " && printf '%s' " + Shell.quote(unitSvc) + " > " + Shell.quote(svc)
+                + " && printf '%s' " + Shell.quote(unitTimer) + " > " + Shell.quote(timer)
+                + " && chmod 644 " + Shell.quote(svc) + " " + Shell.quote(timer)
+                + " && systemctl daemon-reload && systemctl enable " + Shell.quote(unit + ".timer")
+                + " && systemctl restart " + Shell.quote(unit + ".timer");
+        rootOk(s, cmd, SHORT, "Не удалось включить плановый перезапуск");
+    }
+
+    private static final java.util.regex.Pattern ZONE = java.util.regex.Pattern.compile("^[A-Za-z]+(/[A-Za-z0-9_+\\-]+){1,2}$");
+
+    /**
+     * OnCalendar для «за 5 минут до hour:00 по часам ПК». Пояс ПК — если на VPS есть его файл
+     * в zoneinfo (systemd понимает «… Europe/Moscow»); иначе то же время в UTC по текущему сдвигу.
+     */
+    static String calendarFor(VpsSession s, int hour, java.time.ZoneId pcZone) throws VpsException {
+        java.time.LocalTime start = java.time.LocalTime.of(hour, 0).minusMinutes(5);
+        String zone = pcZone.getId();
+        if (ZONE.matcher(zone).matches()
+                && s.exec("test -f " + Shell.quote("/usr/share/zoneinfo/" + zone), SHORT).ok()) {
+            return String.format("*-*-* %02d:%02d:00 %s", start.getHour(), start.getMinute(), zone);
+        }
+        java.time.LocalTime utc = java.time.ZonedDateTime.now(pcZone).with(start)
+                .withZoneSameInstant(java.time.ZoneOffset.UTC).toLocalTime();
+        return String.format("*-*-* %02d:%02d:00 UTC", utc.getHour(), utc.getMinute());
+    }
+
+    static String restartScript(Srv srv) {
+        return "#!/bin/bash\n"
+                + "# Создано BLauncher: ежедневный плановый перезапуск сервера " + srv.id() + "\n"
+                + "set -u\n"
+                + "DIR=" + Shell.quote(srv.dir()) + "\n"
+                + "SVC=" + Shell.quote(srv.service()) + "\n"
+                + "PY=" + Shell.quote(RCON_PY) + "\n"
+                + "rcon() { command -v python3 >/dev/null && python3 -c \"$PY\" \"$DIR/server.properties\" \"$@\"; }\n"
+                // Повтор: сразу после старта сервера RCON поднимается не мгновенно (тест 26.10.2026 — первое
+                // предупреждение потерялось, остальные дошли).
+                + "say() { for i in 1 2 3; do rcon \"say $1\" 2>/dev/null && return 0; sleep 5; done; echo \"не отправлено: $1\"; }\n"
+                // Остановленный сервер не поднимаем: его выключили руками.
+                + "systemctl is-active --quiet \"$SVC\" || exit 0\n"
+                + "say " + Shell.quote("Плановый перезапуск сервера через 5 минут") + "\n"
+                + "sleep 240\n"
+                + "say " + Shell.quote("Перезапуск через 1 минуту, сервер сохранит мир") + "\n"
+                + "sleep 50\n"
+                + "say " + Shell.quote("Перезапуск через 10 секунд") + "\n"
+                + "sleep 10\n"
+                + "systemctl is-active --quiet \"$SVC\" || exit 0\n"
+                + "systemctl reset-failed \"$SVC\" 2>/dev/null\n"
+                + "systemctl restart \"$SVC\"\n"
+                + "echo \"плановый перезапуск выполнен\"\n";
     }
 
     public void deleteBackup(VpsSession s, Srv srv, String name) throws VpsException {

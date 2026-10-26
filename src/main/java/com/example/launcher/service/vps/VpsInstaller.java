@@ -119,13 +119,21 @@ public final class VpsInstaller {
      * @param profileName   имя сборки лаунчера, если ставим её; иначе null
      * @param migrateDir    папка локального сервера, который переносим на VPS (этап 4); null — новый сервер
      */
-    /** @param props выбор из плиток server.properties (ServerProps.cleanAll, уже экранирован); пусто — не трогать */
+    /** @param props выбор из плиток server.properties (ServerProps.cleanAll, уже экранирован); пусто — не трогать
+     *  @param cpuCores сколько ядер VPS можно занять этому серверу (CPUQuota); 0 — без ограничения */
     public record Plan(String serverId, String mcVersion, Core core, String loaderVersion,
                        int ramMb, int port, boolean eulaAccepted, List<Path> modJars, String profileName,
-                       Path migrateDir, Map<String, String> props) {
+                       Path migrateDir, Map<String, String> props, int cpuCores) {
         public Plan {
             modJars = modJars == null ? List.of() : List.copyOf(modJars);
             props = props == null ? Map.of() : Map.copyOf(props);
+            cpuCores = Math.max(0, cpuCores);
+        }
+
+        public Plan(String serverId, String mcVersion, Core core, String loaderVersion,
+                    int ramMb, int port, boolean eulaAccepted, List<Path> modJars, String profileName,
+                    Path migrateDir, Map<String, String> props) {
+            this(serverId, mcVersion, core, loaderVersion, ramMb, port, eulaAccepted, modJars, profileName, migrateDir, props, 0);
         }
 
         public Plan(String serverId, String mcVersion, Core core, String loaderVersion,
@@ -217,6 +225,8 @@ public final class VpsInstaller {
         String loaderVersion;
         int rconPort;
         String stagingAbs;
+        /** Что уже стоит на VPS (другие серверы BLauncher) — читается на шаге CHECK. */
+        VpsCapacity.Snapshot capacity;
 
         Run(VpsSession s, Plan plan, Progress progress) {
             this.s = s;
@@ -308,11 +318,25 @@ public final class VpsInstaller {
                     + "Обычно так бывает в контейнерах OpenVZ/LXC; нужен полноценный VPS (KVM).");
         }
 
-        long memMb = parseLong(r.s.exec("awk '/^MemTotal:/ {print $2}' /proc/meminfo", SHORT).stdout()) / 1024;
-        if (memMb > 0 && r.plan.ramMb() > memMb - SYSTEM_RESERVE_MB) {
-            long max = Math.max(0, memMb - SYSTEM_RESERVE_MB);
-            throw r.fail("На VPS " + memMb + " МБ памяти — серверу можно дать не больше " + max
-                    + " МБ (остальное нужно системе). Выберите меньше.");
+        // Несколько серверов на одном VPS (26.10.2026): память считается за все серверы BLauncher на
+        // машине, включая остановленные — после перезагрузки VPS они стартуют одновременно, и
+        // перерасход кончился бы тем, что ядро Linux убьёт один из них посреди игры.
+        r.capacity = new VpsCapacity().read(r.s);
+        long memMb = r.capacity.memTotalMb();
+        int others = r.capacity.servers().size() - (r.capacity.find(r.id) != null ? 1 : 0);
+        if (memMb > 0) {
+            int max = r.capacity.maxRamFor(r.id);
+            if (r.plan.ramMb() > max) {
+                throw r.fail(others == 0
+                        ? "На VPS " + memMb + " МБ памяти — серверу можно дать не больше " + max
+                                + " МБ (остальное нужно системе и самой Java). Выберите меньше."
+                        : "На VPS " + memMb + " МБ памяти, и " + VpsCapacity.mbText(r.capacity.usedMb(r.id))
+                                + " уже за другими серверами (" + others + "). Этому можно дать не больше "
+                                + max + " МБ — выберите меньше или удалите ненужный сервер с VPS.");
+            }
+        }
+        if (r.plan.cpuCores() > r.capacity.cpus()) {
+            throw r.fail("На VPS ядер: " + r.capacity.cpus() + " — больше серверу не дать");
         }
 
         long freeMb = parseLong(r.s.exec("df -Pk / | awk 'NR==2 {print $4}'", SHORT).stdout()) / 1024;
@@ -332,10 +356,15 @@ public final class VpsInstaller {
         if (!ourActive && listeningPorts(r).contains(r.plan.port())) {
             throw r.fail("Порт " + r.plan.port() + " на VPS уже занят другой программой. Выберите другой порт Minecraft.");
         }
+        // Остановленный сосед порт не слушает, но займёт его при следующем запуске.
+        if (r.capacity.takenPorts(r.id).contains(r.plan.port())) {
+            throw r.fail("Порт " + r.plan.port() + " уже отдан другому серверу на этом VPS. Выберите другой порт Minecraft.");
+        }
 
         r.javaMajor = javaForMinecraft(resolveRequiredJava(r));
         r.javaBin = JAVA_DIR + "/temurin-" + r.javaMajor + "/bin/java";
-        r.done(m + ", " + memMb + " МБ памяти, " + (freeMb / 1024) + " ГБ свободно на диске");
+        r.done(m + ", " + memMb + " МБ памяти, " + (freeMb / 1024) + " ГБ свободно на диске"
+                + (others > 0 ? ", серверов рядом: " + others : ""));
     }
 
     private int resolveRequiredJava(Run r) throws VpsException, IOException, InterruptedException {
@@ -364,7 +393,9 @@ public final class VpsInstaller {
 
     private void packages(Run r) throws VpsException {
         r.step(Step.PACKAGES, "curl, tar, sha256sum");
-        if (r.s.exec("command -v curl && command -v tar && command -v gzip && command -v sha256sum && command -v runuser", SHORT).ok()) {
+        // python3 — для RCON из автобэкапа и планового перезапуска (на минимальном Debian его нет, 26.10.2026).
+        if (r.s.exec("command -v curl && command -v tar && command -v gzip && command -v sha256sum && command -v runuser"
+                + " && command -v python3", SHORT).ok()) {
             r.done("всё уже есть");
             return;
         }
@@ -372,7 +403,7 @@ public final class VpsInstaller {
         // Lock::Timeout — на свежем VPS apt часто занят unattended-upgrades в первые минуты.
         r.rootOk("export DEBIAN_FRONTEND=noninteractive; "
                         + "apt-get -o DPkg::Lock::Timeout=300 update -qq && "
-                        + "apt-get -o DPkg::Lock::Timeout=300 install -y -qq curl ca-certificates tar gzip coreutils util-linux",
+                        + "apt-get -o DPkg::Lock::Timeout=300 install -y -qq curl ca-certificates tar gzip coreutils util-linux python3-minimal",
                 APT, "apt не смог поставить пакеты");
         r.done("curl и сертификаты установлены");
     }
@@ -824,6 +855,9 @@ public final class VpsInstaller {
 
         int existingRcon = parseInt(props.get("rcon.port"));
         Set<Integer> busy = listeningPorts(r);
+        // RCON остановленного соседа порт не слушает, но он занят: иначе два сервера получили бы
+        // 25575, и у второго не работала бы консоль.
+        if (r.capacity != null) busy.addAll(r.capacity.takenPorts(r.id));
         if (existingRcon > 0 && existingRcon != r.plan.port() && "true".equals(props.get("enable-rcon"))) {
             r.rconPort = existingRcon;   // повтор установки — порт уже наш
         } else {
@@ -935,6 +969,8 @@ public final class VpsInstaller {
         String javaHome = JAVA_DIR + "/temurin-" + r.javaMajor;
         // Описание — без имени сервера из лаунчера: юнит-файл не место для пользовательского текста.
         String unit = "# Создано BLauncher. Управляется из лаунчера (сервер " + r.id + ").\n"
+                // По этой метке VpsCapacity считает память сервера: у Forge -Xmx не в юните, а в user_jvm_args.txt.
+                + "# BLauncher-ram=" + r.plan.ramMb() + "\n"
                 + "[Unit]\n"
                 + "Description=Minecraft server " + r.id + " (BLauncher)\n"
                 + "After=network-online.target\n"
@@ -956,6 +992,7 @@ public final class VpsInstaller {
                 // SIGTERM: Minecraft сохраняет миры в shutdown hook и выходит с 143 — это не сбой.
                 + "SuccessExitStatus=0 143\n"
                 + "TimeoutStopSec=120\n"
+                + limits(r.plan)
                 + "NoNewPrivileges=true\n"
                 + "ProtectSystem=full\n"
                 + "ProtectHome=true\n"
@@ -966,6 +1003,19 @@ public final class VpsInstaller {
         r.rootOk("systemctl daemon-reload && systemctl enable " + Shell.quote(r.service) + " 2>&1",
                 SHORT, "systemd не принял службу");
         r.done("автозапуск включён, перезапуск при падении");
+    }
+
+    /**
+     * Ограничения cgroup (26.10.2026, несколько серверов на VPS). MemoryMax — с большим запасом над
+     * -Xmx: это не обычный предел, а забор между соседями. Утечка нативной памяти в одном сервере
+     * (её -Xmx не держит, у модов бывает) убьёт только его, и systemd его перезапустит, — а не
+     * соседа, которого выбрал бы OOM killer ядра. CPUQuota — только если человек сам ограничил ядра.
+     */
+    static String limits(Plan plan) {
+        int xmx = plan.ramMb();
+        String out = "MemoryMax=" + (xmx + Math.max(768, xmx / 2)) + "M\n";
+        if (plan.cpuCores() > 0) out += "CPUQuota=" + (plan.cpuCores() * 100) + "%\n";
+        return out;
     }
 
     // ---------------------------------------------------------------- 9. брандмауэр

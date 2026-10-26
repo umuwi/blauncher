@@ -1807,3 +1807,28 @@
     -fx-padding: 0 0 0 8;}
 
 .mrpack-btn > .arrow-button > .arrow {    -fx-background-color: @bg@;}
+
+/* Серверы на этом VPS (26.10.2026, controller/VpsSplitPanel): полоса памяти машины. */
+.vps-mem-bar {    -fx-background-color: @surface-2@;
+    -fx-background-radius: 4;
+    -fx-spacing: 2;}
+
+.vps-mem-seg-base {    -fx-background-radius: 3;}
+
+.vps-mem-seg {    -fx-background-color: @accent-line@;}
+
+.vps-mem-seg-current {    -fx-background-color: @accent@;}
+
+.vps-mem-free {    -fx-background-color: transparent;}
+
+.vps-mem-system {    -fx-background-color: @line-strong@;}
+
+.vps-dot-on {    -fx-text-fill: @ok@;
+    -fx-font-size: 10px;}
+
+.vps-dot-off {    -fx-text-fill: @text-dim@;
+    -fx-font-size: 10px;}
+
+/* Сторож VPS (26.10.2026, controller/VpsUpkeepPanel): мало диска или памяти на всей машине. */
+.vps-watch-warning {    -fx-text-fill: @warn@;
+    -fx-font-size: 13px;}

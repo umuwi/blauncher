@@ -70,6 +70,8 @@ public class VpsManageController {
         String rconPassword(ServerEntry s) throws IOException;
         /** Уведомление Windows, если окно лаунчера не в фокусе (сервер упал, кто-то зашёл). */
         default void notifyDesktop(String title, String text, boolean error) {}
+        /** Строка интерфейса на языке лаунчера (блок «Обслуживание», VpsUpkeepPanel). */
+        default String tr(String key) { return key; }
     }
 
     private static final ButtonType CANCEL = new ButtonType("Отмена", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -118,17 +120,21 @@ public class VpsManageController {
 
     /** Вставляет панели этапа 3 в экран сервера сразу после консоли. */
     public void wire(VBox screen, Node consolePanel) {
+        upkeep = new VpsUpkeepPanel(host, manager);
         buildLoadPanel();
         buildPlayersPanel();
         buildFilesPanel();
         buildBackupsPanel();
         int at = screen.getChildren().indexOf(consolePanel) + 1;
-        screen.getChildren().addAll(at, List.of(loadPanel, playersPanel, filesPanel, backupsPanel));
+        screen.getChildren().addAll(at, List.of(loadPanel, upkeep.panel(), playersPanel, filesPanel, backupsPanel));
         showPanels(false);
     }
 
+    /** «Обслуживание»: память и ядра, плановый перезапуск, сторож VPS (26.10.2026). */
+    private VpsUpkeepPanel upkeep;
+
     private void showPanels(boolean visible) {
-        for (VBox p : List.of(loadPanel, playersPanel, filesPanel, backupsPanel)) show(p, visible);
+        for (Node p : List.of(loadPanel, upkeep.panel(), playersPanel, filesPanel, backupsPanel)) show(p, visible);
     }
 
     private static VBox panel(String title, String sub) {
@@ -185,7 +191,7 @@ public class VpsManageController {
         Button restart = button("Перезапустить", this::onRestart);
         HBox actions = new HBox(8, restart);
         actions.setAlignment(Pos.CENTER_LEFT);
-        loadPanel.getChildren().addAll(statusLine, stats, loadCaption, actions);
+        loadPanel.getChildren().addAll(statusLine, stats, loadCaption, upkeep.warning(), actions);
     }
 
     private void buildPlayersPanel() {
@@ -388,6 +394,7 @@ public class VpsManageController {
         consoleTicker.setCycleCount(Timeline.INDEFINITE);
         consoleTicker.play();
         poll(gen);
+        upkeep.open(s, () -> session(gen), () -> gen == generation);
         host.runInBackground(() -> {
             if (gen != generation) return;
             refreshFilesNow(gen);
@@ -409,6 +416,7 @@ public class VpsManageController {
         }
         ServerEntry was = current;
         current = null;
+        if (upkeep != null) upkeep.close();
         if (was != null && "Проверяю…".equals(was.getPending())) was.setPending(null);
         VpsSession.Stream c = console;
         VpsServerManager.RconLink r = rcon;
@@ -449,6 +457,8 @@ public class VpsManageController {
                     boolean changed = !s.isSshStatusKnown() || s.isRunning() != st.running();
                     s.setRunning(st.running());
                     s.setSshStatusKnown(true);
+                    // Сторож VPS и для серверов, чей экран не открыт: список проверяет их раз в 20 с.
+                    upkeep.onStatus(s, st, false);
                     if (changed) onChanged.run();
                 });
             } catch (VpsException | RuntimeException ignored) {
@@ -608,6 +618,7 @@ public class VpsManageController {
         loadValue.setText("Весь VPS: память занята " + mb(st.memTotalKb() - st.memAvailKb()) + " из " + mb(st.memTotalKb())
                 + " · ядер " + st.cpus() + " · средняя нагрузка " + st.load());
         renderOnline(online, st.running());
+        upkeep.onStatus(s, st, true);
         playersHint.setText(st.running() ? "" : "Менять списки можно, пока сервер работает (команды идут через RCON). "
                 + "Списки ниже — из файлов сервера.");
         show(playersHint, !st.running());

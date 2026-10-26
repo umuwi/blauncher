@@ -356,6 +356,16 @@ public class ServerEntry {
     public boolean isSshStatusKnown() { return sshStatusKnown; }
     public void setSshStatusKnown(boolean known) { this.sshStatusKnown = known; }
 
+    /**
+     * Та же машина, что у {@code o} (26.10.2026, несколько серверов на одном VPS): адрес, порт SSH и
+     * закреплённый отпечаток хоста. По отпечатку, а не по одному адресу — IP у хостера переходит
+     * к другому клиенту, и чужой VPS не должен считаться «тем же».
+     */
+    public boolean sameVps(ServerEntry o) {
+        return o != null && isSsh() && o.isSsh() && host != null && host.equalsIgnoreCase(o.host)
+                && sshPort == o.sshPort && sshHostKey != null && sshHostKey.equals(o.sshHostKey);
+    }
+
     /** Имя записи в SecretStore с приватным ключом этого сервера. */
     public String secretKeyName() { return "vps/" + id + "/key"; }
     /** Имя записи в SecretStore с паролем sudo (только для SUDO_PASSWORD). */

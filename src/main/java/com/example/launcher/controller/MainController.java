@@ -616,6 +616,7 @@ public class MainController {
                 @Override public boolean isLocalServerRunning(ServerEntry l) { return gameLaunchService.isServerRunning(l.getName()); }
                 @Override public void stat(String event, String detail) { MainController.this.stat(event, detail); }
                 @Override public String tr(String key) { return MainController.this.tr(key); }
+                @Override public List<ServerEntry> allServers() { return new ArrayList<>(servers); }
                 @Override public void openUrl(String url) {
                     // browse() может подвиснуть на пару секунд, пока стартует браузер — не в UI-потоке.
                     executor.submit(() -> {
@@ -658,6 +659,7 @@ public class MainController {
                 @Override public String rconPassword(ServerEntry s) throws IOException {
                     return vpsSecrets.get(s.secretRconName());
                 }
+                @Override public String tr(String key) { return MainController.this.tr(key); }
             });
     private ModrinthService modrinthService;
     /** Reads/installs .mrpack archives - see ModpackService's javadoc for the format. */
