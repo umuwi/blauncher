@@ -51,7 +51,7 @@ public final class AppRestart {
 
     /** True when a restart can actually be performed. */
     public static boolean supported() {
-        return isWindows() && resolveSelf() != null;
+        return (isWindows() || com.example.launcher.service.Os.isLinux()) && resolveSelf() != null;
     }
 
     /**
@@ -60,6 +60,16 @@ public final class AppRestart {
      */
     public static List<String> command(String executable) {
         List<String> argv = new ArrayList<>();
+        if (!isWindows()) {
+            // Linux (с 20.10.2026): та же пауза, путь к лаунчеру — отдельным аргументом ($0),
+            // чтобы пробелы и кавычки в нём не разбирала оболочка. Рабочая папка наследуется —
+            // это папка данных, куда её поставил скрипт blauncher.
+            argv.add("sh");
+            argv.add("-c");
+            argv.add("sleep " + HANDOVER_SECONDS + "; exec \"$0\"");
+            argv.add(executable);
+            return argv;
+        }
         argv.add("cmd");
         argv.add("/c");
         argv.add("ping -n " + (HANDOVER_SECONDS + 1) + " 127.0.0.1 >nul & start \"\" \"" + executable + "\"");
@@ -73,7 +83,7 @@ public final class AppRestart {
      */
     public static boolean spawnSuccessor() {
         Path self = resolveSelf();
-        if (self == null || !isWindows()) return false;
+        if (self == null || !supported()) return false;
         try {
             // Лок единственного экземпляра отдаём ДО запуска преемника. Он стартует с задержкой,
             // но полагаться на то, что мы успеем завершиться первыми, нельзя: при зависшем

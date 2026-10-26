@@ -74,6 +74,163 @@ public class ModpackService {
     }
 
     // ---------------------------------------------------------------
+    // Export: build -> .mrpack (17.10.2026)
+    // ---------------------------------------------------------------
+
+    /** Что получилось при экспорте — для итогового сообщения. */
+    public static class ExportReport {
+        /** Файлов, которые пак скачает с Modrinth. */
+        public int hosted;
+        /** Файлов, положенных внутрь архива (overrides/): их нет на Modrinth. */
+        public int bundled;
+        public long bytes;
+        public final List<String> warnings = new ArrayList<>();
+    }
+
+    /** Папки сборки и путь, под которым они лежат в паке; тот же набор читает импорт (applyOverrides). */
+    private static final String[][] EXPORT_DIRS = {
+            {"mods", "mods"}, {"resourcepacks", "resourcepacks"}, {"datapacks", "datapacks"},
+            {ModrinthService.SHADER_STORAGE_DIR, "shaderpacks"}};
+
+    /**
+     * Собрать .mrpack из сборки лаунчера: моды, наборы ресурсов, датапаки и шейдеры этой сборки.
+     * Файлы, которые Modrinth узнаёт по sha1, идут в {@code modrinth.index.json} ссылками (так
+     * пак весит килобайты и его примет любой лаунчер с поддержкой Modrinth), остальные — в
+     * {@code overrides/}. Modrinth недоступен — всё уходит в overrides, пак всё равно рабочий.
+     *
+     * <p>Архив пишется во временный файл рядом и переносится на место одним шагом: оборванный
+     * экспорт не оставит половину .mrpack под нужным именем.
+     */
+    public ExportReport export(String buildName, String mcVersion, String loader, String loaderVersion,
+                               String packName, String packVersion, Path out, ModrinthService modrinth,
+                               java.util.function.Consumer<String> progress) throws IOException {
+        String depKey = switch (loader == null ? "vanilla" : loader.toLowerCase(java.util.Locale.ROOT)) {
+            case "", "vanilla" -> null;
+            case "fabric" -> "fabric-loader";
+            case "quilt" -> "quilt-loader";
+            case "forge" -> "forge";
+            case "neoforge" -> "neoforge";
+            default -> throw new IOException("Сборки на " + loader + " формат .mrpack не поддерживает"
+                    + " (там только Fabric, Quilt, Forge и NeoForge)");
+        };
+        if (depKey != null && (loaderVersion == null || loaderVersion.isBlank())) {
+            throw new IOException("У сборки не записана версия " + loader
+                    + " — запустите её один раз, лаунчер её запомнит");
+        }
+        if (mcVersion == null || mcVersion.isBlank()) throw new IOException("У сборки не указана версия Minecraft");
+
+        ExportReport report = new ExportReport();
+        // 1. Файлы сборки и их sha1
+        record Entry(Path file, String packPath, String sha1) {}
+        List<Entry> entries = new ArrayList<>();
+        for (String[] dir : EXPORT_DIRS) {
+            Path src = gameDir.resolve(dir[0]).resolve(buildName);
+            if (!Files.isDirectory(src)) continue;
+            try (var list = Files.list(src)) {
+                for (Path f : (Iterable<Path>) list.sorted()::iterator) {
+                    String name = f.getFileName().toString();
+                    // .installed.json, метки синхронизации и прочие служебные файлы лаунчера
+                    if (name.startsWith(".")) continue;
+                    if (!Files.isRegularFile(f)) {
+                        // шейдер распакованной папкой и т.п.: в .mrpack идут только файлы
+                        report.warnings.add("Папка «" + name + "» пропущена — в .mrpack кладутся только файлы");
+                        continue;
+                    }
+                    entries.add(new Entry(f, dir[1] + "/" + name, hashHex(f, "SHA-1")));
+                }
+            }
+        }
+        if (progress != null) progress.accept("Файлов в сборке: " + entries.size() + ". Ищу их на Modrinth...");
+
+        Map<String, ModrinthService.HostedFile> hosted = Map.of();
+        try {
+            List<String> hashes = new ArrayList<>();
+            for (Entry e : entries) hashes.add(e.sha1());
+            hosted = modrinth.hostedFilesByHash(hashes);
+        } catch (IOException | RuntimeException e) {
+            report.warnings.add("Modrinth недоступен (" + e.getMessage() + ") — все файлы положены внутрь архива");
+        }
+
+        // 2. modrinth.index.json
+        JsonObject index = new JsonObject();
+        index.addProperty("formatVersion", 1);
+        index.addProperty("game", "minecraft");
+        index.addProperty("versionId", packVersion);
+        index.addProperty("name", packName);
+        index.addProperty("summary", "Собрано в BLauncher из сборки «" + buildName + "»");
+        JsonArray files = new JsonArray();
+        List<Entry> bundled = new ArrayList<>();
+        for (Entry e : entries) {
+            ModrinthService.HostedFile h = hosted.get(e.sha1());
+            if (h == null) {
+                bundled.add(e);
+                continue;
+            }
+            JsonObject f = new JsonObject();
+            f.addProperty("path", e.packPath());
+            JsonObject hs = new JsonObject();
+            hs.addProperty("sha1", h.sha1());
+            hs.addProperty("sha512", h.sha512());
+            f.add("hashes", hs);
+            JsonArray dl = new JsonArray();
+            dl.add(h.url());
+            f.add("downloads", dl);
+            f.addProperty("fileSize", h.size() > 0 ? h.size() : Files.size(e.file()));
+            files.add(f);
+            report.hosted++;
+        }
+        index.add("files", files);
+        JsonObject deps = new JsonObject();
+        deps.addProperty("minecraft", mcVersion);
+        if (depKey != null) deps.addProperty(depKey, loaderVersion);
+        index.add("dependencies", deps);
+
+        // 3. Архив: сначала во временный файл, потом на место
+        Path parent = out.toAbsolutePath().getParent();
+        if (parent != null) Files.createDirectories(parent);
+        Path tmp = Files.createTempFile(parent, ".bl-export-", ".tmp");
+        try {
+            try (var zip = new java.util.zip.ZipOutputStream(Files.newOutputStream(tmp))) {
+                zip.putNextEntry(new ZipEntry(INDEX_NAME));
+                zip.write(new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
+                        .toJson(index).getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+                int n = 0;
+                for (Entry e : bundled) {
+                    if (progress != null) progress.accept("Кладу в архив (" + (++n) + "/" + bundled.size() + "): "
+                            + e.file().getFileName());
+                    zip.putNextEntry(new ZipEntry("overrides/" + e.packPath()));
+                    Files.copy(e.file(), zip);
+                    zip.closeEntry();
+                    report.bundled++;
+                }
+            }
+            Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
+        }
+        report.bytes = Files.size(out);
+        return report;
+    }
+
+    private static String hashHex(Path file, String algorithm) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance(algorithm);
+            try (InputStream in = Files.newInputStream(file)) {
+                byte[] buf = new byte[64 * 1024];
+                int r;
+                while ((r = in.read(buf)) > 0) md.update(buf, 0, r);
+            }
+            StringBuilder sb = new StringBuilder();
+            for (byte b : md.digest()) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+    }
+
+    // ---------------------------------------------------------------
     // What a pack contains
     // ---------------------------------------------------------------
 
@@ -107,6 +264,9 @@ public class ModpackService {
         public int overrideCount;
         /** Sum of the manifest's {@code fileSize} values, for the "≈ N МБ" line. 0 if not given. */
         public long downloadBytes;
+        /** Для статистики (MainController): пак пришёл из каталога Modrinth, а не из файла, и сколько секунд качался архив. */
+        public boolean fromModrinth;
+        public long fetchSeconds;
         /** Where the pack came from - the chosen file's name, or "Modrinth: <название>". */
         public String sourceLabel = "";
         /** Pack icon URL, when the pack was picked from Modrinth's catalogue. */

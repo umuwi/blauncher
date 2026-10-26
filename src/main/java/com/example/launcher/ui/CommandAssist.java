@@ -237,7 +237,9 @@ public final class CommandAssist {
         for (int i = history.size() - 1; i >= 0; i--) {
             String h = history.get(i);
             if (h.length() > text.length() && h.regionMatches(true, 0, text, 0, text.length())) {
-                return text + h.substring(text.length());
+                // Целиком из истории: «Gam» + хвост давал «Gamemode creative», а такую команду
+                // сервер не знает (найдено ревью Android-копии 18.10.2026).
+                return h;
             }
         }
 

@@ -743,6 +743,7 @@ namespace BLauncherSetup
         {
             if (run == null || !run.Enabled) return;
             string detail = error == null ? "" : error.GetType().Name;
+            if (error != null && error.Data["bl_tag"] is string) detail += ":" + (string)error.Data["bl_tag"];
             if (!string.IsNullOrEmpty(run.Step)) detail += ":" + run.Step;
             // Исходная причина. Распаковщик заворачивает любую ошибку записи в IOException, и 7 октября
             // в отчёте стояло просто «IOException» — ни антивирус (UnauthorizedAccess), ни занятый
@@ -1015,15 +1016,42 @@ namespace BLauncherSetup
                     if (name.StartsWith("runtime/", StringComparison.OrdinalIgnoreCase)) hasRuntime = true;
                 }
                 if (needLauncher && !hasLauncher)
-                    throw new InvalidDataException(
+                    throw Bad("no_exe",
                         "В архиве нет BLauncher.exe в корне — это не сборка лаунчера. Выберите архив " +
                         "BLauncher_<версия>.zip с сайта blauncher.ru.");
                 if (needRuntime && !hasRuntime)
-                    throw new InvalidDataException("В архиве нет папки runtime — это не полная сборка.");
+                    throw Bad("no_runtime", "В архиве нет папки runtime — это не полная сборка.");
                 if (total <= 0)
-                    throw new InvalidDataException("Архив пуст.");
+                    throw Bad("empty", "Архив пуст.");
                 return total;
             }
+        }
+
+        /// <summary>
+        /// Отказ в архиве с короткой меткой причины для статистики (Stats.Failed допишет её к
+        /// «InvalidDataException»). 20.10.2026 у 3cdff403 три отказа подряд пришли одним именем
+        /// класса, а причин у него пять — какая сработала, понять было нельзя.
+        /// </summary>
+        public static InvalidDataException Bad(string tag, string message)
+        {
+            InvalidDataException ex = new InvalidDataException(message);
+            ex.Data["bl_tag"] = tag;
+            return ex;
+        }
+
+        /// <summary>Есть ли в архиве папка runtime\ (своя Java).</summary>
+        public static bool HasRuntime(string zipPath)
+        {
+            using (FileStream file = File.OpenRead(zipPath))
+            using (ZipArchive archive = new ZipArchive(file, ZipArchiveMode.Read))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (entry.FullName.Replace('\\', '/').StartsWith("runtime/", StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrEmpty(entry.Name)) return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>Суммарный размер распакованных файлов архива.</summary>
@@ -1466,14 +1494,14 @@ namespace BLauncherSetup
                     Log.Write("sha256: локальный файл, сверять не с чем — пропускаю");
                     return;
                 }
-                throw new InvalidDataException(
+                throw Zip.Bad("sha_missing",
                     "Сервер не сообщил sha256 для этого архива, поэтому проверить его целостность"
                     + " нельзя. Установка остановлена. Попробуйте позже или поставьте из ZIP-файла,"
                     + " скачанного с сайта вручную.");
             }
             if (want.Length != 64)
             {
-                throw new InvalidDataException(
+                throw Zip.Bad("sha_bad",
                     "Сервер сообщил sha256 в непонятном виде (" + want.Length + " символов вместо 64),"
                     + " проверить архив нельзя. Установка остановлена.");
             }
@@ -1489,7 +1517,7 @@ namespace BLauncherSetup
             }
 
             if (!string.Equals(actual, want, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException(
+                throw Zip.Bad("sha_mismatch",
                     "Скачанный архив не совпал по sha256 с тем, что указан на сервере — файл повреждён или подменён.");
             Log.Write("sha256 совпал: " + actual);
         }
@@ -1746,6 +1774,59 @@ namespace BLauncherSetup
         /// Первая попытка идёт как настроена система, дальше — напрямую: системный прокси бывает
         /// медленным и рвёт длинные загрузки, а обрыв связи больше не начинает загрузку с нуля.
         /// </summary>
+        /// <summary>Сколько ждать возвращения связи без единого скачанного байта, прежде чем сдаться.</summary>
+        internal static int ReconnectBudgetSeconds = 180;
+
+        /// <summary>Сбой сети (а не ответ сервера и не диск): после него есть смысл переподключиться.</summary>
+        internal static bool IsNetworkError(Exception ex)
+        {
+            for (Exception e = ex; e != null; e = e.InnerException)
+            {
+                WebException web = e as WebException;
+                if (web != null)
+                {
+                    switch (web.Status)
+                    {
+                        case WebExceptionStatus.ConnectFailure:
+                        case WebExceptionStatus.NameResolutionFailure:
+                        case WebExceptionStatus.ProxyNameResolutionFailure:
+                        case WebExceptionStatus.Timeout:
+                        case WebExceptionStatus.ConnectionClosed:
+                        case WebExceptionStatus.ReceiveFailure:
+                        case WebExceptionStatus.SendFailure:
+                        case WebExceptionStatus.KeepAliveFailure:
+                        case WebExceptionStatus.PipelineFailure:
+                        case WebExceptionStatus.SecureChannelFailure:
+                            return true;
+                    }
+                    return false;   // ProtocolError (404 и т.п.) — это ответ сервера, не обрыв
+                }
+                if (e is System.Net.Sockets.SocketException) return true;
+                if (e is IOException && e.Message != null && e.Message.StartsWith("Файл скачан не полностью")) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Адреса одного и того же файла — у них один опубликованный хеш.</summary>
+        private static bool SameFile(Dictionary<string, string> hashes, string a, string b)
+        {
+            string ha, hb;
+            return hashes != null && hashes.TryGetValue(a, out ha) && hashes.TryGetValue(b, out hb)
+                && !string.IsNullOrEmpty(ha) && string.Equals(ha, hb, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Пауза перед переподключением с обратным отсчётом в окне; 5, 10, 20, затем по 30 с.</summary>
+        internal static void WaitForReconnect(ProgressSink sink, int round)
+        {
+            int seconds = Math.Min(30, 5 << Math.Min(round, 3));
+            for (int left = seconds; left > 0; left--)
+            {
+                sink.Check();
+                sink.Say("Нет связи с сервером — переподключусь через " + left + " с. Скачанное сохранено.");
+                Thread.Sleep(1000);
+            }
+        }
+
         private static long Fetch(List<string> urls, string target, ProgressSink sink, double from, double to,
                                   Dictionary<string, string> hashes, bool needLauncher, bool needRuntime)
         {
@@ -1753,15 +1834,23 @@ namespace BLauncherSetup
             long unpacked = 0;
             string currentUrl = null;
 
+            // Переподключение (21.10.2026): пропавшая на полминуты связь раньше сжигала все три
+            // попытки за пару секунд, и установка падала. Теперь, пока нет связи, попытки не
+            // тратятся — установщик ждёт её до ReconnectBudgetSeconds и докачивает с места обрыва.
+            DateTime offlineSince = DateTime.MinValue;   // MinValue — связь есть
+            int waits = 0;
             for (int attempt = 1; attempt <= 3 && unpacked <= 0; attempt++)
             {
                 sink.Check();
-                bool viaProxy = attempt == 1;
+                bool viaProxy = attempt == 1 && waits == 0;
+                bool networkDown = false;
 
                 foreach (string url in urls)
                 {
-                    // Докачивать можно только тот же самый файл: при смене адреса начинаем заново.
-                    if (currentUrl != null && !string.Equals(currentUrl, url, StringComparison.OrdinalIgnoreCase))
+                    // Докачивать можно только тот же самый файл: при смене адреса начинаем заново —
+                    // кроме адресов с тем же хешем (blauncher-launcher.zip и его копия с версией).
+                    if (currentUrl != null && !string.Equals(currentUrl, url, StringComparison.OrdinalIgnoreCase)
+                        && !SameFile(hashes, currentUrl, url))
                         TryDelete(target);
                     currentUrl = url;
 
@@ -1780,6 +1869,7 @@ namespace BLauncherSetup
                         Net.Download(url, target, delegate(long received, long total)
                         {
                             if (baseline < 0) { baseline = received; started = DateTime.Now; }
+                            if (received - baseline > 256 * 1024) offlineSince = DateTime.MinValue;   // связь есть
                             double seconds = Math.Max(0.5, (DateTime.Now - started).TotalSeconds);
 
                             // Прокси, который «еле тянет», лучше обойти: если за 12 секунд набежало
@@ -1824,6 +1914,20 @@ namespace BLauncherSetup
                         // Обрыв связи — файл оставляем, следующая попытка докачает его с места обрыва.
                         lastError = ex;
                         Log.Write("download " + url + ": " + ex.Message);
+                        // Нет сети — другие адреса того же сервера тоже не ответят, а переход на
+                        // полную сборку стёр бы уже скачанное. Ждём связь и продолжаем этот же файл.
+                        if (IsNetworkError(ex)) { networkDown = true; break; }
+                    }
+                }
+
+                if (unpacked <= 0 && networkDown && waits < 60)
+                {
+                    if (offlineSince == DateTime.MinValue) offlineSince = DateTime.Now;
+                    if ((DateTime.Now - offlineSince).TotalSeconds < ReconnectBudgetSeconds)
+                    {
+                        WaitForReconnect(sink, waits++);
+                        attempt--;   // ожидание связи попыткой не считается
+                        continue;
                     }
                 }
 
@@ -1911,11 +2015,26 @@ namespace BLauncherSetup
                 // Файл выбрал сам пользователь через /ZIP= или кнопку «Из ZIP-файла…» —
                 // сверять его не с чем, и отказываться тут не за что.
                 VerifyHash(job.ZipPath, job.ZipSha256, true);
-                installed = Zip.Inspect(job.ZipPath, true, true);
-                CheckSpace(job.Dir, installed + 32L * 1024 * 1024);
+                // Архив лаунчера без Java (blauncher-launcher.zip) — тоже годится: Java вшита в этот
+                // exe. 20.10.2026 (3cdff403) три попытки «Из ZIP-файла…» подряд кончились отказом
+                // «нет папки runtime», и человек так и не поставил лаунчер.
+                bool ownJava = Zip.HasRuntime(job.ZipPath);
+                long zipBytes = Zip.Inspect(job.ZipPath, true, false);
+                long embedded = ownJava ? 0 : EmbeddedSize();
+                CheckSpace(job.Dir, zipBytes + embedded + 32L * 1024 * 1024);
+                double zipFrom = 0.12;
+                if (!ownJava)
+                {
+                    sink.Say("В архиве нет Java — беру встроенную…");
+                    Stats.Mark(run, "java_extract");
+                    ExtractEmbedded(job.Dir, sink, 0.12, 0.40);
+                    installed += embedded;
+                    zipFrom = 0.40;
+                }
                 sink.Say("Распаковываю в " + job.Dir + "…");
                 Stats.Mark(run, "zip_extract");
-                Zip.Extract(job.ZipPath, job.Dir, sink, 0.12, 0.92, installed);
+                Zip.Extract(job.ZipPath, job.Dir, sink, zipFrom, 0.92, zipBytes);
+                installed += zipBytes;
             }
             else
             {
@@ -1994,7 +2113,7 @@ namespace BLauncherSetup
             sink.At(0.95);
             sink.Say("Ярлыки и запись удаления…");
             Stats.Mark(run, "finalize");
-            AfterExtract(job, installed);
+            AfterExtract(job, installed, run);
 
             sink.At(1.0);
             string done = "BLauncher " + (string.IsNullOrEmpty(job.Version) ? "" : job.Version + " ") +
@@ -2019,14 +2138,19 @@ namespace BLauncherSetup
             return done;
         }
 
-        private static void AfterExtract(InstallJob job, long unpacked)
+        private static void AfterExtract(InstallJob job, long unpacked, StatsRun run)
         {
             string exe = GuiExe(job.Dir);
             string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "BLauncher.lnk");
             string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "BLauncher.lnk");
 
+            // Отдельные стадии: 20.10.2026 установка 3cdff403 дошла до «finalize» и замолчала — ни
+            // done, ни fail. Ярлыки идут через COM WScript.Shell, который антивирус может держать,
+            // поэтому видно должно быть, на каком действии встали.
+            Stats.Mark(run, "shortcuts");
             job.DesktopCreated = Shortcut(job.Desktop, desktop, exe, job.Dir);
             job.StartMenuCreated = Shortcut(job.StartMenu, programs, exe, job.Dir);
+            Stats.Mark(run, "uninstall_reg");
             WriteUninstaller(job.Dir);
 
             string installedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -2315,6 +2439,19 @@ namespace BLauncherSetup
                     case "ZIP": case "FROMZIP": if (!string.IsNullOrEmpty(value)) options.Zip = value; break;
                     default: Log.Write("неизвестный ключ: " + arg); break;
                 }
+            }
+            // Удаление без /DIR — папка, где лежит сам uninstall.exe, если там стоит лаунчер. Раньше
+            // всегда бралась папка по умолчанию, а запись в «Программах и компонентах» вызывает
+            // uninstall.exe как раз без /DIR: у поставившего в свою папку «Удалить» сносило
+            // %LOCALAPPDATA%\BLauncher, а его установка оставалась (поймано проверкой 21.10.2026).
+            if (string.IsNullOrEmpty(options.Dir) && options.Uninstall)
+            {
+                try
+                {
+                    string own = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    if (!string.IsNullOrEmpty(own) && Installer.LooksLikeInstall(own)) options.Dir = own;
+                }
+                catch (Exception ex) { Log.Write("uninstall: не понял свою папку: " + ex.Message); }
             }
             if (string.IsNullOrEmpty(options.Dir)) options.Dir = Installer.DefaultDir();
             return options;

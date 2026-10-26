@@ -111,6 +111,17 @@
                     </VBox>
                 </graphic>
             </ToggleButton>
+            <!-- «Купить сервер» (17.10.2026): аренда VPS у serv.host — своя вкладка, чтобы её видели
+                 сразу, а не среди блоков экрана «Сервер». -->
+            <ToggleButton fx:id="navRentButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
+                          maxWidth="Infinity" onAction="#onNavRent">
+                <graphic>
+                    <VBox alignment="CENTER" spacing="4">
+                        <FontIcon iconLiteral="fth-shopping-cart" iconSize="19" styleClass="rail-icon"/>
+                        <Label text="%nav_rent" styleClass="rail-label" textAlignment="CENTER" minHeight="-Infinity"/>
+                    </VBox>
+                </graphic>
+            </ToggleButton>
             <ToggleButton fx:id="navServerButton" styleClass="rail-btn" toggleGroup="$navToggleGroup"
                           maxWidth="Infinity" onAction="#onNavServer">
                 <graphic>
@@ -168,10 +179,10 @@
                     <HBox spacing="10" alignment="TOP_LEFT">
                         <!-- Vanilla quick-pick lives outside the ScrollPane so it stays put
                              while the recent-builds strip beside it scrolls horizontally. -->
-                        <StackPane fx:id="homeVanillaCardHolder"/>
+                        <StackPane fx:id="homeVanillaCardHolder" styleClass="home-vanilla-holder"/>
                         <ScrollPane fx:id="homeBuildScroll" styleClass="build-scroll" fitToHeight="true"
                                     hbarPolicy="NEVER" vbarPolicy="NEVER" pannable="true" HBox.hgrow="ALWAYS">
-                            <HBox fx:id="homeBuildGrid" styleClass="build-grid" spacing="10"/>
+                            <HBox fx:id="homeBuildGrid" styleClass="build-grid, home-build-strip" spacing="10"/>
                         </ScrollPane>
                     </HBox>
 
@@ -415,14 +426,70 @@
                         <Button fx:id="modsSearchButton" styleClass="secondary-button" onAction="#onSearch">
                             <graphic><FontIcon iconLiteral="fth-search" iconSize="14"/></graphic>
                         </Button>
-                        <Button fx:id="modsImportPackBtn" text="Импорт .mrpack" styleClass="secondary-button"
-                                onAction="#onImportMrpack"/>
+                        <!-- Создать пак из сборки / импортировать готовый (17.10.2026). -->
+                        <MenuButton fx:id="modsImportPackBtn" text="%mrpack_menu" styleClass="mrpack-btn" minWidth="-Infinity">
+                            <graphic><FontIcon iconLiteral="fth-package" iconSize="14"/></graphic>
+                            <items>
+                                <MenuItem text="%mrpack_create" onAction="#onExportMrpack"/>
+                                <MenuItem text="%mrpack_import" onAction="#onImportMrpack"/>
+                            </items>
+                        </MenuButton>
                     </HBox>
                     <VBox fx:id="modsListPanel" styleClass="panel" spacing="0"/>
                 </VBox>
             </ScrollPane>
 
             <!--  ==  SERVER (quick screen: local server + list entry point)  ==  -->
+            <!--  ==  КУПИТЬ СЕРВЕР (serv.host, 17.10.2026)  ==
+                 Покупка — на сайте хостинга в системном браузере; «Я купил» открывает обычную форму
+                 панели VPS. Логика — MainController, «Аренда VPS у serv.host». Тексты — rent_*. -->
+            <ScrollPane fx:id="screenRent" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
+                <VBox styleClass="screen" spacing="16">
+                    <VBox spacing="4">
+                        <Label fx:id="rentTitleLabel" text="%rent_title" styleClass="page-title"/>
+                        <Label text="%rent_card_sub" styleClass="page-sub" wrapText="true"/>
+                    </VBox>
+
+                    <!-- Выбор тарифа (26.10.2026): локация, процессор и тариф с живыми ценами serv.host —
+                         ui/RentPicker, вставляется в rentPickerBox при первом заходе на вкладку. -->
+                    <VBox styleClass="panel, rent-card" spacing="12">
+                        <Label text="%rent_plans_title" styleClass="panel-title"/>
+                        <VBox fx:id="rentPickerBox"/>
+                        <Label text="%rent_prices_note" styleClass="rent-fine" wrapText="true" maxWidth="Infinity"/>
+                        <Label text="%rent_os_hint" styleClass="toggle-sub" wrapText="true"/>
+                    </VBox>
+
+                    <VBox styleClass="panel" spacing="12">
+                        <Label text="%rent_steps_head" styleClass="panel-title"/>
+                        <Label fx:id="rentOpenedLabel" text="%rent_steps_sub" styleClass="rent-hint" wrapText="true" minHeight="-Infinity"
+                               maxWidth="Infinity" visible="false" managed="false"/>
+                        <HBox spacing="12" alignment="TOP_LEFT">
+                            <Label text="1" styleClass="rent-step-num" minWidth="-Infinity"/>
+                            <Label text="%rent_step1" styleClass="rent-step-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        </HBox>
+                        <HBox spacing="12" alignment="TOP_LEFT">
+                            <Label text="2" styleClass="rent-step-num" minWidth="-Infinity"/>
+                            <Label fx:id="rentStep2Label" text="%rent_step2" styleClass="rent-step-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        </HBox>
+                        <HBox spacing="12" alignment="TOP_LEFT">
+                            <Label text="3" styleClass="rent-step-num" minWidth="-Infinity"/>
+                            <Label text="%rent_step3" styleClass="rent-step-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        </HBox>
+                        <HBox spacing="12" alignment="TOP_LEFT">
+                            <Label text="4" styleClass="rent-step-num" minWidth="-Infinity"/>
+                            <Label text="%rent_step4" styleClass="rent-step-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        </HBox>
+                        <HBox spacing="14" alignment="CENTER_LEFT">
+                            <Button text="%rent_bought_btn" styleClass="rent-btn" minWidth="-Infinity" onAction="#onRentBought">
+                                <graphic><FontIcon iconLiteral="fth-log-in" iconSize="14"/></graphic>
+                            </Button>
+                            <Hyperlink fx:id="rentReopenLink" text="%rent_reopen_link" styleClass="all-builds-link"
+                                       visible="false" managed="false" onAction="#onRentReopen"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
             <ScrollPane fx:id="screenServer" styleClass="screen-scroll" vbarPolicy="NEVER" fitToWidth="true" visible="false" managed="false">
                 <VBox styleClass="screen" spacing="16">
                     <VBox spacing="4">
@@ -949,6 +1016,10 @@
                          creating a new one — a fresh build has no installed mods yet. -->
                     <!-- Разделы (моды, ресурспаки, датапаки, шейдеры) рисует renderEditBuildModsList. -->
                     <VBox fx:id="editBuildModsSection" spacing="8" visible="false" managed="false">
+                        <!-- Починка сборки (18.10.2026): недостающие моды, дубли, не тот загрузчик. -->
+                        <Button text="%mods_fix_btn" styleClass="secondary-button" onAction="#onFixEditingBuild">
+                            <graphic><FontIcon iconLiteral="fth-tool" iconSize="14"/></graphic>
+                        </Button>
                         <ScrollPane fitToWidth="true" styleClass="screen-scroll" vbarPolicy="AS_NEEDED" maxHeight="380" VBox.vgrow="ALWAYS">
                             <VBox fx:id="editBuildModsList" spacing="0"/>
                         </ScrollPane>
@@ -1004,7 +1075,8 @@
 
         <!-- ===== CREATE SERVER MODAL (local / VPS) ===== -->
         <StackPane fx:id="createServerOverlay" styleClass="modal-scrim" visible="false" managed="false">
-            <VBox styleClass="modal-card" prefWidth="640" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
+            <!-- 860, а не 640: плитки server.properties (17.10.2026) идут в три колонки. -->
+            <VBox styleClass="modal-card" prefWidth="860" maxWidth="Infinity" maxHeight="Infinity" spacing="0">
                 <HBox styleClass="modal-header" alignment="CENTER_LEFT">
                     <Label text="%server_create_title" styleClass="modal-title" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
                     <Button fx:id="createServerCloseBtn" styleClass="modal-close" onAction="#onCloseCreateServer">
@@ -1017,7 +1089,10 @@
                 </HBox>
 
                 <!--  ==  Local server fields  ==  -->
-                <VBox fx:id="createLocalPanel" styleClass="modal-body" spacing="10" VBox.vgrow="ALWAYS">
+                <VBox fx:id="createLocalPanel" styleClass="modal-body" spacing="0" VBox.vgrow="ALWAYS">
+                  <!-- Прокрутка: с плитками server.properties форма выше окна 1050x700. -->
+                  <ScrollPane styleClass="sp-scroll" fitToWidth="true" hbarPolicy="NEVER" VBox.vgrow="ALWAYS">
+                  <VBox spacing="10" style="-fx-padding: 0 8 0 0;">
                     <Label text="Карточка появится в списке «Мои серверы» — запускать и останавливать можно прямо оттуда, независимо от других серверов."
                            styleClass="toggle-sub" wrapText="true"/>
                     <Label text="%server_name_label" styleClass="field-label"/>
@@ -1039,6 +1114,12 @@
                         <Slider fx:id="newServerRamSlider" min="0.5" max="16" value="4" blockIncrement="0.5" HBox.hgrow="ALWAYS"/>
                         <Label fx:id="newServerRamValueLabel" text="4 ГБ" styleClass="ram-value"/>
                     </HBox>
+                    <Label text="%sp_title" styleClass="field-label"/>
+                    <Label text="%sp_sub" styleClass="toggle-sub" wrapText="true"/>
+                    <!-- Плитки строит ui/ServerPropsEditor (MainController.initModals). -->
+                    <VBox fx:id="newServerPropsBox"/>
+                  </VBox>
+                  </ScrollPane>
                 </VBox>
 
                 <!--  ==  VPS по SSH, шаг 1: данные доступа из письма хостера  ==
@@ -1047,6 +1128,16 @@
                 <VBox fx:id="createVpsStep1Panel" styleClass="modal-body" spacing="10" visible="false" managed="false" VBox.vgrow="ALWAYS">
                     <Label text="Арендуйте VPS у любого хостера с Ubuntu 22.04+ или Debian 12+ и введите данные доступа из письма хостера. Дальше лаунчер всё поставит сам."
                            styleClass="toggle-sub" wrapText="true"/>
+                    <!-- Пока VPS нет — предложение арендовать; после «Я купил» — где искать данные. -->
+                    <HBox fx:id="rentPromoBox" styleClass="rent-promo" spacing="10" alignment="CENTER_LEFT" visible="false" managed="false">
+                        <FontIcon iconLiteral="fth-server" iconSize="16" styleClass="rent-icon"/>
+                        <VBox spacing="1" HBox.hgrow="ALWAYS">
+                            <Label text="%rent_promo_title" styleClass="rent-plan-name"/>
+                            <Label text="%rent_promo_sub" styleClass="toggle-sub" wrapText="true"/>
+                        </VBox>
+                        <Button text="%rent_promo_btn" styleClass="server-action" minWidth="-Infinity" onAction="#onRentPromo"/>
+                    </HBox>
+                    <Label fx:id="rentConnectHint" text="%rent_connect_hint" styleClass="rent-hint" wrapText="true" minHeight="-Infinity" visible="false" managed="false"/>
                     <Label text="%server_name_label" styleClass="field-label"/>
                     <TextField fx:id="newVpsNameField" styleClass="text-input" promptText="Например, anarchy-1"/>
                     <HBox spacing="10">

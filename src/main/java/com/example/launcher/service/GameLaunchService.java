@@ -116,6 +116,7 @@ public class GameLaunchService {
         callback.onOutput("[LAUNCH] Building JVM arguments...");
         List<String> command = buildCommand(classpath, launchVersion, profile, mainClass, assetIndex, nativesDir,
                 skinUrl, capeUrl);
+        if (heapCapNotice != null) callback.onOutput("[MEMORY] " + heapCapNotice);
 
         syncMods(profile);
         syncGroupContentAdditive(profile, "resourcepacks");
@@ -145,6 +146,7 @@ public class GameLaunchService {
         }
         pb.directory(gameDir.toFile());
         pb.redirectErrorStream(true);
+        final boolean wslGpu = enableWslGpu(pb, callback);
 
         // Persist this launch (full command + every output line, stderr included via
         // redirectErrorStream above) to its own file. The in-app console is the only other place
@@ -159,14 +161,24 @@ public class GameLaunchService {
         gameProcesses.add(proc);
         final Path argFileToClean = argFile;
         final Path nativesToClean = nativesDir;
+        // Для enableWslGpu: 1 — игра штатно закрылась («Stopping!»), 2 — после этого упала JVM.
+        final int[] wslExitPhase = {0};
+        final String[] wslErrorFile = {null};
 
         Thread outputThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
                  BufferedWriter logWriter = launchLog == null ? null
                          : Files.newBufferedWriter(launchLog, StandardCharsets.UTF_8, StandardOpenOption.APPEND)) {
                 String line;
+                boolean errorFileNext = false;
                 while ((line = reader.readLine()) != null) {
                     callback.onOutput(line);
+                    if (wslGpu) {
+                        if (line.contains("Stopping!") && wslExitPhase[0] == 0) wslExitPhase[0] = 1;
+                        else if (line.startsWith("# A fatal error has been detected") && wslExitPhase[0] == 1) wslExitPhase[0] = 2;
+                        else if (errorFileNext) wslErrorFile[0] = line.replaceFirst("^#\\s*", "").trim();
+                        errorFileNext = line.startsWith("# An error report file");
+                    }
                     if (logWriter != null) {
                         logWriter.write(line);
                         logWriter.newLine();
@@ -189,6 +201,17 @@ public class GameLaunchService {
             try {
                 exitCode = proc.waitFor();
                 callback.onOutput("\n[LAUNCH] Game closed with exit code: " + exitCode);
+                if (wslGpu) {
+                    // Решаем по строкам вывода — дождаться, пока поток дочитает хвост.
+                    outputThread.join(5000);
+                    if (exitCode != 0 && wslExitPhase[0] == 2) {
+                        callback.onOutput("[LAUNCH] WSL: драйвер d3d12 упал уже после закрытия игры — это не вылет");
+                        if (wslErrorFile[0] != null) {
+                            try { Files.deleteIfExists(Path.of(wslErrorFile[0])); } catch (Exception ignored) {}
+                        }
+                        exitCode = 0;
+                    }
+                }
             } catch (InterruptedException e) {
                 callback.onError("Game process interrupted: " + e.getMessage());
             } finally {
@@ -207,6 +230,42 @@ public class GameLaunchService {
                 if (onExit != null) onExit.accept(exitCode);
             }
         }).start();
+    }
+
+    /**
+     * WSL: игра на видеокарте, а не на процессоре.
+     *
+     * <p>Mesa в WSL (Ubuntu 24.04, Mesa 25.2) по умолчанию выбирает llvmpipe — программную
+     * отрисовку, даже когда видеокарта проброшена через /dev/dxg. 20.10.2026 на RX 6700 XT это
+     * давало 10–27 FPS в мире на любом повороте камеры, а с GALLIUM_DRIVER=d3d12 та же игра
+     * упирается в 60 Гц экрана WSLg. На обычном Linux /dev/dxg нет, и здесь ничего не меняется.
+     *
+     * <p>Цена: драйвер d3d12 роняет процесс уже ПОСЛЕ glfwTerminate — его поток переживает
+     * выгрузку своей библиотеки (SIGSEGV в libc, стабильно, проверено тестом на голом GLFW).
+     * Мир к этому моменту сохранён, но код выхода ненулевой, и лаунчер показал бы «игра
+     * вылетела». Поэтому падение после «Stopping!» считается штатным выходом (см. launch).
+     * Предзагрузка libd3d12/libdxcore через LD_PRELOAD не помогает — Java падает на старте.
+     *
+     * <p>Если человек сам выбрал драйвер (GALLIUM_DRIVER и т.п.), не вмешиваемся.
+     */
+    private static boolean enableWslGpu(ProcessBuilder pb, GameOutputCallback callback) {
+        if (!Os.isLinux()) return false;
+        Map<String, String> env = pb.environment();
+        if (env.containsKey("GALLIUM_DRIVER") || env.containsKey("MESA_LOADER_DRIVER_OVERRIDE")
+                || env.containsKey("LIBGL_ALWAYS_SOFTWARE")) {
+            return false;
+        }
+        if (!Files.exists(Path.of("/dev/dxg"))) return false;
+        boolean driver = Stream.of("/usr/lib/x86_64-linux-gnu/dri", "/usr/lib/aarch64-linux-gnu/dri",
+                        "/usr/lib64/dri", "/usr/lib/dri")
+                .anyMatch(dir -> Files.exists(Path.of(dir, "d3d12_dri.so")));
+        if (!driver) return false;
+        env.put("GALLIUM_DRIVER", "d3d12");
+        // Иначе на каждом выходе из игры WSL пишет дамп памяти процесса (wsl-capture-crash).
+        String opts = env.getOrDefault("JDK_JAVA_OPTIONS", "");
+        env.put("JDK_JAVA_OPTIONS", (opts + " -XX:-CreateCoredumpOnCrash").trim());
+        callback.onOutput("[LAUNCH] WSL: отрисовка через видеокарту (GALLIUM_DRIVER=d3d12)");
+        return true;
     }
 
     /** How many per-launch logs to keep around before the oldest ones are pruned. */
@@ -983,6 +1042,42 @@ public class GameLaunchService {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
+    /** Что сказать игроку, если {@link #capToFreeCommit} урезал память; null — не урезал. */
+    private volatile String heapCapNotice;
+
+    /**
+     * Не даёт куче больше, чем Windows ещё может выделить (ОЗУ + подкачка минус уже занятое).
+     * 18.10.2026: на ПК с 32 ГБ игра с -Xmx15360M упала через 2 минуты — «Native memory
+     * allocation failed», при этом свободной ОЗУ было 10,8 ГБ, а запаса подкачки 438 МБ (её было
+     * 2 ГБ, а браузер и прочее заняли остальное). На Windows getFreeSwapSpaceSize — это как раз
+     * свободный объём выделения (ullAvailPageFile), сверено с Win32_OperatingSystem. Сверх кучи
+     * игре нужно ~1,5 ГБ на драйвер, метаданные классов и потоки — их и оставляем.
+     */
+    private int capToFreeCommit(int maxMem) {
+        heapCapNotice = null;
+        try {
+            if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) return maxMem;
+            var os = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            if (!(os instanceof com.sun.management.OperatingSystemMXBean sun)) return maxMem;
+            long freeMb = sun.getFreeSwapSpaceSize() / (1024 * 1024);
+            if (freeMb <= 0) return maxMem;
+            int fits = (int) Math.max(2048, (freeMb - 1536) / 512 * 512);
+            if (fits >= maxMem) return maxMem;
+            heapCapNotice = "Windows может выделить ещё только " + gb(freeMb) + " ГБ — игра запущена с "
+                    + gb(fits) + " ГБ вместо " + gb(maxMem) + " ГБ, иначе она вылетит посреди игры. "
+                    + "Закройте браузер и тяжёлые программы или увеличьте файл подкачки Windows";
+            return fits;
+        } catch (Throwable t) {
+            return maxMem;
+        }
+    }
+
+    /** 9216 → «9», 2560 → «2,5». */
+    private static String gb(long mb) {
+        long tenths = Math.round(mb * 10.0 / 1024);
+        return tenths % 10 == 0 ? String.valueOf(tenths / 10) : (tenths / 10) + "," + (tenths % 10);
+    }
+
     private List<String> buildCommand(String classpath, String versionId, Profile profile,
                                       String mainClass, String assetIndex, Path nativesDir,
                                       String skinUrl, String capeUrl) throws IOException {
@@ -999,10 +1094,20 @@ public class GameLaunchService {
         int maxMem = config.getMaxMemoryMb() > 0 ? config.getMaxMemoryMb() : profile.getMaxMemoryMb();
         // Своя память у сборки (окно сборки → «Настройки запуска», 11.10.2026) важнее общей.
         if (profile.getBuildMemoryMb() > 0) maxMem = profile.getBuildMemoryMb();
+        maxMem = capToFreeCommit(maxMem);
         minMem = Math.min(minMem, maxMem);   // -Xms больше -Xmx — JVM не стартует вовсе
 
         command.add("-Xms" + minMem + "M");
         command.add("-Xmx" + maxMem + "M");
+        // Отдавать системе неиспользуемую кучу (18.10.2026): NeoForge-сборка с -Xmx9216M держала
+        // 7 ГБ закоммиченной кучи при 4,1 ГБ занятых — в диспетчере 9,8 ГБ «под лаунчером».
+        // G1 по умолчанию раздувает кучу до 70 % свободного и почти не сжимает. С этими порогами
+        // после маркировки лишнее возвращается; периодическая сборка — для меню и паузы.
+        // Флаг интервала есть только с Java 12, Java 8 на нём не стартует вовсе.
+        int javaMajor = new JavaVersionDetector().getMajorVersion(command.get(0));
+        command.add("-XX:MinHeapFreeRatio=10");
+        command.add("-XX:MaxHeapFreeRatio=30");
+        if (javaMajor >= 12) command.add("-XX:G1PeriodicGCInterval=30000");
         command.add("-Dfile.encoding=UTF-8");
         command.add("-Duser.country=US");
         command.add("-Duser.language=en");
@@ -1020,8 +1125,7 @@ public class GameLaunchService {
         // У сборки свои аргументы — они вместо общих, а не вдобавок.
         String jvmLine = !profile.getBuildJvmArgs().isBlank() ? profile.getBuildJvmArgs()
                 : (config == null ? "" : config.getJvmArgs());
-        command.addAll(dropUnsupportedGcFlags(parseJvmArgs(jvmLine),
-                new JavaVersionDetector().getMajorVersion(command.get(0))));
+        command.addAll(dropUnsupportedGcFlags(parseJvmArgs(jvmLine), javaMajor));
 
         command.add("-cp");
         command.add(classpath);
@@ -1742,6 +1846,20 @@ public class GameLaunchService {
      *  (e.g. cp866), garbling Cyrillic server dirs before Java can match them (verified live:
      *  without this line adoption and stale-kill silently found nothing). */
     private String listJavaProcesses() throws IOException, InterruptedException {
+        if (!isWindows()) {
+            // Linux (с 20.10.2026): PowerShell нет, зато ProcessHandle читает /proc и отдаёт
+            // полную командную строку чужих процессов того же пользователя — на Windows он её
+            // как раз не видит, отсюда и обход через Win32_Process выше.
+            StringBuilder sb = new StringBuilder();
+            ProcessHandle.allProcesses().forEach(ph -> {
+                ProcessHandle.Info info = ph.info();
+                String cmd = info.command().orElse("");
+                if (!cmd.endsWith("/java")) return;
+                String args = info.arguments().map(a -> String.join(" ", a)).orElse("");
+                sb.append(ph.pid()).append('|').append(cmd).append(' ').append(args).append('\n');
+            });
+            return sb.toString();
+        }
         return runPowerShellScript("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
                 + "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | "
                 + "ForEach-Object { $_.ProcessId.ToString() + '|' + $_.CommandLine }");

@@ -196,7 +196,7 @@ public final class SecretStore {
 
     private static byte[] dpapi(byte[] data, boolean protect) throws IOException {
         if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
-            throw new IOException("Хранилище секретов VPS работает только в Windows (нужен DPAPI)");
+            return keyFileWrap(data, protect);
         }
         String encoded = Base64.getEncoder().encodeToString(DPAPI_SCRIPT.getBytes(StandardCharsets.UTF_16LE));
         ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive",
@@ -230,6 +230,73 @@ public final class SecretStore {
         } finally {
             Arrays.fill(out, (byte) 0);
         }
+    }
+
+    // ---------------------------------------------------------------- Linux
+
+    /**
+     * Замена DPAPI вне Windows (с 20.10.2026, Linux-сборка): главный ключ шифруется ключом из
+     * файла {@code ~/.config/blauncher/secrets.key} с правами 0600.
+     *
+     * <p>Связки ключей (libsecret/KWallet) нет в WSL и на части рабочих столов, а без хранилища
+     * панель VPS не работает вовсе, поэтому — файл. Он лежит НЕ рядом с vps_secrets.json, а в
+     * домашнем каталоге: скопированная папка данных лаунчера без него не расшифровывается, как
+     * и файл с DPAPI на другом ПК. От процессов того же пользователя файл не защищает — DPAPI
+     * без энтропии не защищает тоже.
+     */
+    private static byte[] keyFileWrap(byte[] data, boolean protect) throws IOException {
+        byte[] kek = keyFileKey();
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            byte[] aad = DPAPI_ENTROPY.getBytes(StandardCharsets.UTF_8);
+            if (protect) {
+                byte[] iv = new byte[GCM_IV_BYTES];
+                new SecureRandom().nextBytes(iv);
+                cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+                cipher.updateAAD(aad);
+                byte[] ct = cipher.doFinal(data);
+                byte[] packed = new byte[iv.length + ct.length];
+                System.arraycopy(iv, 0, packed, 0, iv.length);
+                System.arraycopy(ct, 0, packed, iv.length, ct.length);
+                return packed;
+            }
+            if (data.length <= GCM_IV_BYTES) throw new IOException("Главный ключ хранилища секретов повреждён");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(kek, "AES"), new GCMParameterSpec(GCM_TAG_BITS, data, 0, GCM_IV_BYTES));
+            cipher.updateAAD(aad);
+            return cipher.doFinal(data, GCM_IV_BYTES, data.length - GCM_IV_BYTES);
+        } catch (GeneralSecurityException e) {
+            throw new IOException("Главный ключ не расшифровывается: файл секретов создан с другим "
+                    + keyFilePath() + " или под другим пользователем", e);
+        } finally {
+            Arrays.fill(kek, (byte) 0);
+        }
+    }
+
+    private static Path keyFilePath() {
+        String xdg = System.getenv("XDG_CONFIG_HOME");
+        Path base = (xdg != null && !xdg.isBlank()) ? Path.of(xdg) : Path.of(System.getProperty("user.home"), ".config");
+        return base.resolve("blauncher").resolve("secrets.key");
+    }
+
+    private static byte[] keyFileKey() throws IOException {
+        Path keyFile = keyFilePath();
+        if (Files.exists(keyFile)) {
+            byte[] key = Files.readAllBytes(keyFile);
+            if (key.length != 32) throw new IOException("Файл " + keyFile + " повреждён (ожидалось 32 байта)");
+            return key;
+        }
+        Files.createDirectories(keyFile.getParent());
+        byte[] key = new byte[32];
+        new SecureRandom().nextBytes(key);
+        // Файл создаётся сразу с 0600: сначала создать, потом сузить права — значит на мгновение
+        // оставить ключ читаемым для всех.
+        Path tmp = keyFile.resolveSibling("secrets.key.tmp");
+        Files.deleteIfExists(tmp);
+        Files.createFile(tmp, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+        Files.write(tmp, key);
+        Files.move(tmp, keyFile, StandardCopyOption.ATOMIC_MOVE);
+        return key;
     }
 
     private static byte[] readAll(InputStream in) throws IOException {

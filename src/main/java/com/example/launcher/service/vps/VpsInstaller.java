@@ -1,6 +1,7 @@
 package com.example.launcher.service.vps;
 
 import com.example.launcher.service.Http;
+import com.example.launcher.service.ServerProps;
 import com.example.launcher.service.VersionDownloadService;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -118,16 +119,24 @@ public final class VpsInstaller {
      * @param profileName   имя сборки лаунчера, если ставим её; иначе null
      * @param migrateDir    папка локального сервера, который переносим на VPS (этап 4); null — новый сервер
      */
+    /** @param props выбор из плиток server.properties (ServerProps.cleanAll, уже экранирован); пусто — не трогать */
     public record Plan(String serverId, String mcVersion, Core core, String loaderVersion,
                        int ramMb, int port, boolean eulaAccepted, List<Path> modJars, String profileName,
-                       Path migrateDir) {
+                       Path migrateDir, Map<String, String> props) {
         public Plan {
             modJars = modJars == null ? List.of() : List.copyOf(modJars);
+            props = props == null ? Map.of() : Map.copyOf(props);
+        }
+
+        public Plan(String serverId, String mcVersion, Core core, String loaderVersion,
+                    int ramMb, int port, boolean eulaAccepted, List<Path> modJars, String profileName,
+                    Path migrateDir) {
+            this(serverId, mcVersion, core, loaderVersion, ramMb, port, eulaAccepted, modJars, profileName, migrateDir, null);
         }
 
         public Plan(String serverId, String mcVersion, Core core, String loaderVersion,
                     int ramMb, int port, boolean eulaAccepted, List<Path> modJars, String profileName) {
-            this(serverId, mcVersion, core, loaderVersion, ramMb, port, eulaAccepted, modJars, profileName, null);
+            this(serverId, mcVersion, core, loaderVersion, ramMb, port, eulaAccepted, modJars, profileName, null, null);
         }
     }
 
@@ -837,6 +846,21 @@ public final class VpsInstaller {
             props.put("white-list", "false");
             props.put("motd", "A BLauncher server");
         }
+        // Плитки из формы установки (17.10.2026). Значения уже проверены и экранированы
+        // ServerProps.cleanAll; ключи — закрытый список без порта и RCON, а их ниже всё равно
+        // ставит лаунчер. Перевод строки в значении — второй замок от подмены соседних ключей.
+        for (Map.Entry<String, String> e : r.plan.props().entrySet()) {
+            String v = e.getValue();
+            ServerProps.Field f = ServerProps.field(e.getKey());
+            if (f == null || v.indexOf('\n') >= 0 || v.indexOf('\r') >= 0) continue;
+            // До 1.13 режим и сложность в файле — номер; «creative» такой сервер не понимает и
+            // молча ставит выживание (найдено ревью Android-копии 18.10.2026). Порядок choices
+            // совпадает с номерами Minecraft.
+            if (f.kind() == ServerProps.Kind.CHOICE && f.choices().contains(v) && before113(r.plan.mcVersion())) {
+                v = String.valueOf(f.choices().indexOf(v));
+            }
+            props.put(e.getKey(), v);
+        }
         if (r.plan.migrateDir() != null) {
             // С ПК мог приехать server-ip=192.168.x.x — на VPS такого адреса нет, и сервер не
             // открыл бы порт вовсе. Пусто = слушать все адреса VPS.
@@ -862,6 +886,13 @@ public final class VpsInstaller {
 
     public static String secretRconName(String serverId) {
         return "vps/" + serverId + "/rcon";
+    }
+
+    /** Версия Minecraft старше 1.13 («1.12.2», «1.8.9»); снапшоты и «26.x» — нет. */
+    static boolean before113(String mc) {
+        if (mc == null) return false;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^1\\.(\\d+)").matcher(mc.trim());
+        return m.find() && Integer.parseInt(m.group(1)) < 13;
     }
 
     static Map<String, String> parseProperties(String text) {

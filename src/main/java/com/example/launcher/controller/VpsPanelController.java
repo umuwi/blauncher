@@ -2,6 +2,7 @@ package com.example.launcher.controller;
 
 import com.example.launcher.model.Profile;
 import com.example.launcher.model.ServerEntry;
+import com.example.launcher.service.ServerProps;
 import com.example.launcher.service.VersionDownloadService;
 import com.example.launcher.service.vps.SecretStore;
 import com.example.launcher.service.vps.ServerMigration;
@@ -9,6 +10,7 @@ import com.example.launcher.service.vps.VpsConnector;
 import com.example.launcher.service.vps.VpsException;
 import com.example.launcher.service.vps.VpsInstaller;
 import com.example.launcher.service.vps.VpsSession;
+import com.example.launcher.ui.ServerPropsEditor;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
@@ -93,6 +95,10 @@ public class VpsPanelController {
         /** Моды, которые лаунчер кладёт этому серверу: launcher_root/mods/&lt;имя&gt;. */
         Path localModsDir(ServerEntry local);
         boolean isLocalServerRunning(ServerEntry local);
+        /** Событие анонимной статистики (OnlineStatsService.event). */
+        void stat(String event, String detail);
+        /** Строка интерфейса на языке лаунчера (плитки server.properties). */
+        String tr(String key);
     }
 
     /** ButtonType.CANCEL подписан «Cancel» независимо от языка лаунчера. */
@@ -118,6 +124,8 @@ public class VpsPanelController {
 
     /** Идёт подключение — окно создания закрывать нельзя, см. MainController.onCloseCreateServer. */
     private volatile boolean busy;
+    /** Откуда пришёл человек: ServHostRent.SOURCE после «Я купил», иначе null. Сбрасывается в resetForm. */
+    private String rentSource;
     private final Map<VpsConnector.Step, StepRow> stepRows = new EnumMap<>(VpsConnector.Step.class);
 
     public VpsPanelController(Host host, SecretStore secrets) {
@@ -177,6 +185,12 @@ public class VpsPanelController {
         keyFileField.clear();
         onAuthPassword();
         statusLabel.setText("");
+        rentSource = null;
+    }
+
+    /** Форму открыли кнопкой «Я купил — подключить сервер»: отметить сервер для счётчика. */
+    public void setRentSource(String source) {
+        rentSource = source;
     }
 
     /** Пароли из полей формы — сразу, как только они больше не нужны. */
@@ -284,6 +298,7 @@ public class VpsPanelController {
 
     private void startConnect() {
         Form form = pendingForm;
+        String source = rentSource;
         busy = true;
         host.showVpsStep(2);
         buildStepRows();
@@ -316,6 +331,7 @@ public class VpsPanelController {
                                 pendingHostKey.fingerprint(), VpsConnector.keyComment(id)),
                         this::stepUi);
                 ServerEntry entry = createEntry(id, form, pendingHostKey, result);
+                entry.setRentedVia(source);
                 secrets.put(entry.secretKeyName(), result.privateKeyPem());
                 if (result.sudoPasswordToStore() != null) {
                     secrets.put(entry.secretSudoName(), result.sudoPasswordToStore());
@@ -332,6 +348,7 @@ public class VpsPanelController {
                             + ", права: " + entry.getSshPrivilege());
                     host.showToast("Сервер «" + entry.getName() + "» подключён по SSH", "success");
                     host.openServerDetail(entry.getId());
+                    if (source != null) host.stat("rent_connected", source);
                 });
             } catch (VpsException e) {
                 finishFailed(e.getMessage());
@@ -594,6 +611,9 @@ public class VpsPanelController {
     /** Порт можно поменять перед установкой: при «порт занят» иначе было бы некуда деться. */
     private TextField installPortField;
     private CheckBox eulaCheck;
+    /** Плитки server.properties (17.10.2026); при переносе с ПК скрыты — у сервера уже есть свой файл. */
+    private ServerPropsEditor propsEditor;
+    private VBox propsBox;
     private Button installBtn, installRetryBtn;
     private final Map<VpsInstaller.Step, StepRow> installRows = new EnumMap<>(VpsInstaller.Step.class);
     /** id сервера, на который сейчас идёт установка; null — ничего не ставится. */
@@ -706,7 +726,15 @@ public class VpsPanelController {
         installBtn.setMaxWidth(Double.MAX_VALUE);
         installBtn.setOnAction(e -> onInstall());
 
-        installForm = new VBox(10, modeTabs, coreBox, buildBox, moveBox, ramRow, eulaRow, eulaNote, installBtn);
+        propsEditor = new ServerPropsEditor(host::tr, 3);
+        Label propsTitle = new Label(host.tr("sp_title"));
+        propsTitle.getStyleClass().add("select-label");
+        Label propsSub = new Label(host.tr("sp_sub"));
+        propsSub.getStyleClass().add("toggle-sub");
+        propsSub.setWrapText(true);
+        propsBox = new VBox(6, propsTitle, propsSub, propsEditor.node());
+
+        installForm = new VBox(10, modeTabs, coreBox, buildBox, moveBox, ramRow, propsBox, eulaRow, eulaNote, installBtn);
 
         installStepsList = new VBox(6);
         installStatusLabel = new Label();
@@ -793,6 +821,7 @@ public class VpsPanelController {
         show(coreBox, !build && !move);
         show(buildBox, build);
         show(moveBox, move);
+        show(propsBox, !move);
         if (build) refreshBuildInfo();
         if (move) refreshMoveInfo();
         installBtn.setText(move ? "Перенести на VPS" : "Установить");
@@ -1071,6 +1100,8 @@ public class VpsPanelController {
             return new VpsInstaller.Plan(s.getId(), l.getVersion(), core, loaderVersion, ram, port, true, mods, null,
                     Files.isDirectory(dir) ? dir : null);
         }
+        // Проверка плиток до чтения сборки: неверное значение — сразу понятная ошибка.
+        Map<String, String> props = ServerProps.cleanAll(propsEditor.values());
         if (modeBuildTab.isSelected()) {
             Profile p = selectedBuild();
             if (p == null) throw new IllegalArgumentException("Выберите сборку");
@@ -1078,14 +1109,15 @@ public class VpsPanelController {
             if (core == null) throw new IllegalArgumentException("Сборки на " + p.getModLoader() + " панель пока не ставит");
             List<Path> mods = core.takesMods() ? VpsInstaller.collectServerMods(host.modsDirFor(p))[0] : List.of();
             return new VpsInstaller.Plan(s.getId(), p.getVersionId(), core,
-                    core.needsLoaderVersion() ? p.getModLoaderVersion() : null, ram, port, true, mods, p.getName());
+                    core.needsLoaderVersion() ? p.getModLoaderVersion() : null, ram, port, true, mods, p.getName(),
+                    null, props);
         }
         VpsInstaller.Core core = coreCombo.getValue();
         String mc = versionCombo.getValue();
         if (core == null || mc == null) throw new IllegalArgumentException("Выберите ядро и версию Minecraft");
         String loader = core.needsLoaderVersion() ? loaderVersionCombo.getValue() : null;
         if (core.needsLoaderVersion() && loader == null) throw new IllegalArgumentException("Нет версии " + core.label + " для " + mc);
-        return new VpsInstaller.Plan(s.getId(), mc, core, loader, ram, port, true, List.of(), null);
+        return new VpsInstaller.Plan(s.getId(), mc, core, loader, ram, port, true, List.of(), null, null, props);
     }
 
     private void startInstall(ServerEntry s, VpsInstaller.Plan plan) {

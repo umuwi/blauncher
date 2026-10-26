@@ -11,7 +11,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.OpenOption;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Map;
 
@@ -96,41 +98,122 @@ public final class Http {
     @FunctionalInterface
     public interface Progress {
         void update(long done, long total);
+
+        /** Связь оборвалась, через {@code waitMs} мс переподключимся и докачаем с того же места. */
+        default void reconnecting(long waitMs) { }
     }
 
     /** То же, что {@link #download(String, Path, Map, Duration)}, но сообщает ход в {@code progress}
      *  (из потока загрузки — переносить в UI-поток должен получатель). */
     public static long download(String url, Path destination, Map<String, String> headers,
                                 Duration timeout, Progress progress) throws IOException {
-        HttpURLConnection conn = connect("GET", url, headers, null, null, timeout, null);
-        int code = conn.getResponseCode();
-        if (code < 200 || code >= 300) {
-            drain(conn.getErrorStream());
-            return -1;
-        }
         Path parent = destination.getParent();
         if (parent != null) Files.createDirectories(parent);
         Path part = destination.resolveSibling(destination.getFileName() + ".part");
-        long length = conn.getContentLengthLong();
-        long total = 0;
-        if (progress != null) progress.update(0, length);
-        try (InputStream in = conn.getInputStream();
-             OutputStream out = Files.newOutputStream(part)) {
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                out.write(buf, 0, n);
-                total += n;
-                if (progress != null) progress.update(total, length);
+        Files.deleteIfExists(part);
+        long have = 0;        // сколько уже лежит в .part
+        long total = -1;      // полный размер файла, если сервер его назвал
+        long offlineSince = -1;
+        int pause = 0;
+        try {
+            while (true) {
+                try {
+                    Map<String, String> h = headers;
+                    if (have > 0) {
+                        h = new java.util.HashMap<>(headers);
+                        h.put("Range", "bytes=" + have + "-");
+                    }
+                    HttpURLConnection conn = connect("GET", url, h, null, null, timeout, null);
+                    int code = conn.getResponseCode();
+                    if (code < 200 || code >= 300) {
+                        drain(conn.getErrorStream());
+                        if (have == 0) return -1;
+                        // Докачка не удалась (416 и т.п.) — начинаем файл заново.
+                        have = 0;
+                        Files.deleteIfExists(part);
+                        continue;
+                    }
+                    boolean resumed = have > 0 && code == 206;
+                    if (have > 0 && !resumed) have = 0;   // сервер не умеет Range — заново
+                    long length = conn.getContentLengthLong();
+                    if (length >= 0) total = have + length;
+                    if (progress != null) progress.update(have, total);
+                    long got = 0;
+                    try (InputStream in = conn.getInputStream();
+                         OutputStream out = Files.newOutputStream(part, resumed
+                                 ? new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.APPEND}
+                                 : new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                                                    StandardOpenOption.WRITE})) {
+                        byte[] buf = new byte[64 * 1024];
+                        int n;
+                        while ((n = in.read(buf)) != -1) {
+                            out.write(buf, 0, n);
+                            have += n;
+                            got += n;
+                            DOWNLOADED.addAndGet(n);
+                            if (got > 256 * 1024) { offlineSince = -1; pause = 0; }   // связь есть
+                            if (progress != null) progress.update(have, total);
+                        }
+                    }
+                    // Сжатый ответ: Content-Length — про сжатое тело, сверять с ним прочитанное нельзя.
+                    String enc = conn.getContentEncoding();
+                    boolean exact = enc == null || enc.equalsIgnoreCase("identity");
+                    if (exact && length >= 0 && got < length) {
+                        throw new IOException("Соединение оборвалось: получено " + have + " из " + total + " байт ("
+                                + conn.getURL().getHost() + ")");
+                    }
+                    break;
+                } catch (IOException e) {
+                    // Переподключение (21.10.2026). Раньше любой обрыв — пропал Wi-Fi на 20 секунд,
+                    // антивирус разорвал соединение — начинал файл с нуля или ронял всю загрузку:
+                    // 7267c860 трижды получил JRE почти целиком и трижды остался без Java.
+                    if (!isReconnectable(e)) throw e;
+                    long now = System.currentTimeMillis();
+                    if (offlineSince < 0) offlineSince = now;
+                    if (now - offlineSince > RECONNECT_BUDGET.toMillis()) throw e;
+                    pause = Math.min(pause == 0 ? 1000 : pause * 2, 10_000);
+                    if (progress != null) progress.reconnecting(pause);
+                    try {
+                        Thread.sleep(pause);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.InterruptedIOException("загрузка прервана");
+                    }
+                }
             }
-            out.close();
-            checkComplete(conn, total);   // обрезанный файл не переименовываем в настоящий — см. там
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             try { Files.deleteIfExists(part); } catch (IOException ignored) {}
             throw e;
         }
         Files.move(part, destination, StandardCopyOption.REPLACE_EXISTING);
-        return total;
+        return have;
+    }
+
+    /**
+     * Всего байт, принятых download() с запуска лаунчера, — для отметки «сколько скачала первая
+     * загрузка игры и за сколько» (22.10.2026: новичок ждал 12 минут и закрыл лаунчер на 94 %,
+     * а был ли это медленный интернет или огромная сборка — не видно).
+     */
+    public static final java.util.concurrent.atomic.AtomicLong DOWNLOADED = new java.util.concurrent.atomic.AtomicLong();
+
+    /** Сколько ждать возвращения связи без единого полученного байта, прежде чем сдаться. */
+    static Duration RECONNECT_BUDGET = Duration.ofSeconds(90);
+
+    /**
+     * Сбой связи, после которого есть смысл переподключиться: обрыв, таймаут, отказ в соединении,
+     * пропавший DNS (так выглядит отключённый Wi-Fi). Ошибки диска и доступа к файлу — нет.
+     */
+    static boolean isReconnectable(IOException e) {
+        if (e instanceof java.nio.file.FileSystemException) return false;
+        if (e instanceof java.io.InterruptedIOException && !(e instanceof java.net.SocketTimeoutException)) return false;
+        if (e instanceof java.net.SocketException || e instanceof java.net.SocketTimeoutException
+                || e instanceof java.net.UnknownHostException || e instanceof javax.net.ssl.SSLException
+                || e instanceof java.io.EOFException) {
+            return true;
+        }
+        String m = e.getMessage() == null ? "" : e.getMessage();
+        return m.startsWith("Соединение оборвалось") || m.contains("Premature EOF")
+                || m.contains("Connection reset") || m.contains("Unexpected end of file");
     }
 
     /** Заголовки, которые нельзя отдавать чужому хосту при редиректе. */

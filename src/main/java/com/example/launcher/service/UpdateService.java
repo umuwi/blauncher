@@ -209,14 +209,32 @@ public class UpdateService {
      * compiles the sources itself on first run).
      */
     public static boolean isAppImageInstall(Path exePath) {
-        if (exePath == null) return false;
+        return appImageJar(exePath) != null;
+    }
+
+    /**
+     * app\BLauncher.jar этой установки, или null, если это не app-image.
+     *
+     * <p>Раскладка jpackage на Linux другая (с 20.10.2026): {@code BLauncher/bin/BLauncher} без
+     * расширения и {@code BLauncher/lib/app/BLauncher.jar}. Исполняемый файл JDK там зовётся
+     * просто «java» — его отсекаем по той же причине, что java.exe/javaw.exe выше.
+     */
+    static Path appImageJar(Path exePath) {
+        if (exePath == null) return null;
         Path fileName = exePath.getFileName();
-        if (fileName == null) return false;
-        String name = fileName.toString().toLowerCase(Locale.ROOT);
-        if (!name.endsWith(".exe")) return false;
-        if (name.equals("java.exe") || name.equals("javaw.exe")) return false;
         Path parent = exePath.getParent();
-        return parent != null && Files.isRegularFile(parent.resolve("app").resolve("BLauncher.jar"));
+        if (fileName == null || parent == null) return null;
+        String name = fileName.toString().toLowerCase(Locale.ROOT);
+        if (name.equals("java.exe") || name.equals("javaw.exe") || name.equals("java")) return null;
+        Path jar;
+        if (name.endsWith(".exe")) {
+            jar = parent.resolve("app").resolve("BLauncher.jar");
+        } else if (!Os.isWindows() && parent.getParent() != null) {
+            jar = parent.getParent().resolve("lib").resolve("app").resolve("BLauncher.jar");
+        } else {
+            return null;
+        }
+        return Files.isRegularFile(jar) ? jar : null;
     }
 
     /**
@@ -426,7 +444,7 @@ public class UpdateService {
      *                       resolves once at startup (see AppLauncher/MainApp) rather than this
      *                       service guessing at it.
      */
-    public void applyUpdateAndRestart(Path downloadedFile, Path currentExePath) throws IOException {
+    public void applyUpdateAndRestart(Path downloadedFile, Path currentExePath, Path failMarker) throws IOException {
         // One check, not two: isAppImageInstall() already covers both "is this even an .exe of
         // ours" and "is there an app\BLauncher.jar to replace" — see its javadoc for why the old
         // bare endsWith(".exe") test sent every BLauncher.bat run down this path by mistake.
@@ -435,7 +453,11 @@ public class UpdateService {
                     "This isn't a jpackage .exe install (running as " + currentExePath + "), so there is no "
                             + "app\\BLauncher.jar to replace. Please download the new version manually from the website.");
         }
-        Path targetJar = currentExePath.getParent().resolve("app").resolve("BLauncher.jar");
+        Path targetJar = appImageJar(currentExePath);
+        if (!Os.isWindows()) {
+            replaceJarAndRestartUnix(downloadedFile, targetJar, currentExePath);
+            return;
+        }
 
         // The running jpackage app-image is actually TWO OS processes on Windows, not one —
         // confirmed by inspecting a live install with Win32_Process: a small native bootstrap
@@ -454,23 +476,69 @@ public class UpdateService {
         long currentPid = ProcessHandle.current().pid();
         long parentPid = ProcessHandle.current().parent().map(ProcessHandle::pid).orElse(-1L);
 
+        startSelfReplace(downloadedFile, targetJar, currentExePath, currentPid, parentPid, failMarker);
+    }
+
+    /**
+     * Linux: подменяет jar прямо отсюда и запускает преемника.
+     *
+     * <p>Всё, ради чего на Windows пишутся .bat и .vbs, здесь не нужно: открытый файл Linux не
+     * запирает, а переименование поверх него атомарно — работающая JVM дочитывает старый jar
+     * (его inode жив, пока открыт), следующий запуск видит новый. Поэтому замена делается ДО
+     * выхода, и если она не удалась (нет прав на папку установки), лаунчер остаётся на экране
+     * и показывает ошибку, а не исчезает.
+     *
+     * <p>Преемник ждёт 2 секунды по той же причине, что в AppRestart: лок единственного
+     * экземпляра. Лок отдаём заранее, рабочая папка (папка данных) наследуется.
+     */
+    private static void replaceJarAndRestartUnix(Path downloadedFile, Path targetJar, Path exe) throws IOException {
+        Path fresh = targetJar.resolveSibling(targetJar.getFileName() + ".new");
+        Files.copy(downloadedFile, fresh, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            Files.move(fresh, targetJar, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            Files.deleteIfExists(fresh);
+            throw new IOException("Не удалось заменить " + targetJar + ": " + e.getMessage()
+                    + ". Проверьте права на папку установки.", e);
+        }
+        Files.deleteIfExists(downloadedFile);
+        com.example.launcher.MainApp.releaseSingleInstanceLock();
+        new ProcessBuilder("sh", "-c", "sleep 2; exec \"$0\"", exe.toAbsolutePath().toString())
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+    }
+
+    /** Пишет apply-update.bat + .vbs рядом со скачанным файлом и запускает их отдельным процессом. */
+    static void startSelfReplace(Path downloadedFile, Path targetJar, Path exe,
+                                 long currentPid, long parentPid, Path failMarker) throws IOException {
         Path scriptPath = downloadedFile.getParent().resolve("apply-update.bat");
-        String script = buildSelfReplaceScript(downloadedFile, targetJar, currentExePath, currentPid, parentPid);
+        String script = buildSelfReplaceScript(downloadedFile, targetJar, exe, currentPid, parentPid, failMarker);
         Files.writeString(scriptPath, script, StandardCharsets.UTF_8);
 
         // Same hidden-window trick as applyClassesUpdateAndRestart: launching cmd.exe directly
         // from a javaw-hosted JVM would pop a brand-new console window. Wrapping the .bat in a VBS
         // and running it through wscript.exe keeps the whole update completely silent.
+        //
+        // VBS — в UTF-16 с BOM, а не в UTF-8: wscript читает .vbs без BOM в кодировке ANSI, и путь
+        // с кириллицей (папка временных файлов лежит под именем пользователя Windows) превращался
+        // в мусор — .bat не запускался вовсе, лаунчер закрывался и не возвращался. 18.10.2026
+        // 281b45df семь раз скачал обновление целиком и семь раз остался на 1.14.15; проверено
+        // 20.10 на папке «Иван Петров (2)»: старый вариант не доходит до дела, этот — доходит.
         Path vbsPath = downloadedFile.getParent().resolve("apply-update.vbs");
-        Files.writeString(vbsPath,
-                "Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\n"
-                        + "Set shell = CreateObject(\"WScript.Shell\")\r\n"
-                        + "shell.Run \"\"\"" + scriptPath.toAbsolutePath() + "\"\"\", 0, False\r\n"
-                        + "WScript.Sleep 1000\r\n"
-                        + "fso.DeleteFile WScript.ScriptFullName\r\n",
-                StandardCharsets.UTF_8);
+        String vbs = "Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\n"
+                + "Set shell = CreateObject(\"WScript.Shell\")\r\n"
+                + "shell.Run \"\"\"" + scriptPath.toAbsolutePath() + "\"\"\", 0, False\r\n"
+                + "WScript.Sleep 1000\r\n"
+                + "fso.DeleteFile WScript.ScriptFullName\r\n";
+        byte[] body = vbs.getBytes(StandardCharsets.UTF_16LE);
+        byte[] withBom = new byte[body.length + 2];
+        withBom[0] = (byte) 0xFF;
+        withBom[1] = (byte) 0xFE;
+        System.arraycopy(body, 0, withBom, 2, body.length);
+        Files.write(vbsPath, withBom);
 
-        ProcessBuilder pb = new ProcessBuilder("wscript.exe", vbsPath.toString());
+        ProcessBuilder pb = new ProcessBuilder("wscript.exe", "//B", vbsPath.toString());
         pb.directory(scriptPath.getParent().toFile());
         // Detached — this process must keep running after the launcher's own JVM exits, exactly
         // like the existing pattern for the dedicated server / playit.gg agent elsewhere in this
@@ -485,8 +553,8 @@ public class UpdateService {
      * around the copy is a safety net for a lock held by something else entirely (antivirus,
      * etc) rather than the primary mechanism for waiting out the old process anymore.
      */
-    private String buildSelfReplaceScript(Path downloadedFile, Path targetJar, Path exeToRelaunch,
-                                           long currentPid, long parentPid) {
+    static String buildSelfReplaceScript(Path downloadedFile, Path targetJar, Path exeToRelaunch,
+                                           long currentPid, long parentPid, Path failMarker) {
         String downloaded = downloadedFile.toAbsolutePath().toString();
         String target = targetJar.toAbsolutePath().toString();
         String exe = exeToRelaunch.toAbsolutePath().toString();
@@ -506,29 +574,56 @@ public class UpdateService {
         // case, not a problem.
         String killCurrent = "taskkill /F /PID " + currentPid + " > nul 2>&1\r\n";
         String killParent = parentPid > 0 ? "taskkill /F /PID " + parentPid + " > nul 2>&1\r\n" : "";
-        // Retries a bounded number of times (15 x 1s = ~15s past the initial 1s wait) rather than
-        // looping forever — if the file lock genuinely never clears for some other reason
-        // (antivirus holding the file, etc), this gives up and tells the person to relaunch
-        // manually instead of leaving a batch window stuck retrying indefinitely with no
-        // indication anything is wrong.
+        // Не дольше ~15 попыток по секунде. Раньше после них шли echo + pause — но окно скрытое
+        // (wscript, стиль 0), так что «pause» ждал вечно, а лаунчер не возвращался: человек
+        // видел, что он просто исчез. Теперь при неудаче пишем метку failMarker и запускаем
+        // СТАРУЮ версию — она увидит метку, скажет, что обновление не встало, и отправит
+        // update_fail в статистику.
+        //
+        // Не «copy поверх»: если copy не смог дописать занятый файл, Windows удаляет недописанный
+        // файл назначения — проверено 20.10.2026, jar лаунчера исчезал совсем. Поэтому новый jar
+        // сначала кладётся рядом (.new), а на место встаёт переименованием: в любой момент на
+        // месте лежит целиком либо старый, либо новый файл.
+        //
+        // На 5-й неудаче старый jar сам уходит в .old: файл, который держит антивирус, часто
+        // нельзя заменить, но можно переименовать. Не вышло совсем — старый возвращается на место.
+        //
+        // chcp 65001 — первой строкой: cmd читает .bat в OEM-кодировке, а файл записан в UTF-8;
+        // путь с кириллицей без этого ломался (см. startSelfReplace). Скобочных блоков с путями
+        // нет нарочно: «)» в имени папки («Иван (2)») закрыл бы блок раньше времени.
+        String fresh = target + ".new";
+        String old = target + ".old";
+        String marker = failMarker == null ? null : failMarker.toAbsolutePath().toString();
+        String wait = "timeout /t 1 /nobreak > nul 2>&1 || ping -n 2 127.0.0.1 > nul\r\n";
         return "@echo off\r\n"
+                + "chcp 65001 > nul\r\n"
                 + "setlocal enabledelayedexpansion\r\n"
                 + "set attempts=0\r\n"
                 + killCurrent
                 + killParent
-                + "timeout /t 1 /nobreak > nul\r\n"
+                + wait
+                + "del /f \"" + fresh + "\" > nul 2>&1\r\n"
+                + "copy /y \"" + downloaded + "\" \"" + fresh + "\" > nul 2>&1\r\n"
+                + "if errorlevel 1 goto failed\r\n"
                 + ":retry\r\n"
-                + "copy /y \"" + downloaded + "\" \"" + target + "\" > nul 2>&1\r\n"
-                + "if not errorlevel 1 goto copied\r\n"
+                + "move /y \"" + fresh + "\" \"" + target + "\" > nul 2>&1\r\n"
+                + "if not exist \"" + fresh + "\" goto copied\r\n"
                 + "set /a attempts+=1\r\n"
-                + "if !attempts! geq 15 (\r\n"
-                + "  echo Update failed - could not replace the launcher file. Please relaunch it manually.\r\n"
-                + "  pause\r\n"
-                + "  goto cleanup\r\n"
-                + ")\r\n"
-                + "timeout /t 1 /nobreak > nul\r\n"
+                + "if !attempts! neq 5 goto noren\r\n"
+                + "del /f \"" + old + "\" > nul 2>&1\r\n"
+                + "move /y \"" + target + "\" \"" + old + "\" > nul 2>&1\r\n"
+                + ":noren\r\n"
+                + "if !attempts! geq 15 goto failed\r\n"
+                + wait
                 + "goto retry\r\n"
+                + ":failed\r\n"
+                + "if not exist \"" + target + "\" move /y \"" + old + "\" \"" + target + "\" > nul 2>&1\r\n"
+                + "del /f \"" + fresh + "\" > nul 2>&1\r\n"
+                + (marker != null ? "echo locked> \"" + marker + "\"\r\n" : "")
+                + "goto relaunch\r\n"
                 + ":copied\r\n"
+                + "del /f \"" + old + "\" > nul 2>&1\r\n"
+                + ":relaunch\r\n"
                 // "/D" is load-bearing, not cosmetic: this cmd.exe's own working directory is
                 // downloadedFile's temp folder (see applyUpdateAndRestart's pb.directory(...)),
                 // and plain "start "" exe" would hand that SAME temp cwd down to the relaunched

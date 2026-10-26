@@ -27,6 +27,14 @@
     -fx-font-family: "Inter";
     -fx-background-color: @bg@;
     -fx-text-fill: @text@;
+    /* -fx-text-fill у .root на метки не наследуется: у Modena .label берёт цвет из
+       -fx-text-background-color, а тот вычисляется от её СВЕТЛОГО фона — тёмный текст.
+       18.10.2026: в окне установки сборки значения («fabric 0.16.14», источник) и описание
+       сливались с тёмной карточкой. Те же переменные — для флажков, радио и многострочных
+       полей (у TextArea был белый текст на белом фоне содержимого). */
+    -fx-text-background-color: @text@;
+    -fx-text-inner-color: @text@;
+    -fx-control-inner-background: @surface-2@;
     -fx-accent: @accent@;
     -fx-focus-color: @accent@;
     -fx-faint-focus-color: transparent;}
@@ -1590,3 +1598,212 @@
     -fx-text-fill: @text-on-accent@;}
 
 .dialog-pane .button:default:hover {    -fx-background-color: @accent-hover@;}
+
+/* Аренда сервера на serv.host (17.10.2026): вкладка «Купить сервер», шаги,
+   плашка в форме VPS. Только токены палитры — так её получают все темы и своя палитра. */
+.rent-card {    -fx-border-color: @accent-line@;}
+
+.rent-icon {    -fx-icon-color: @accent@;}
+
+.rent-btn {    -fx-background-color: @accent@;
+    -fx-background-radius: 8;
+    -fx-text-fill: @text-on-accent@;
+    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 8 16;
+    -fx-min-height: 34px;
+    -fx-graphic-text-gap: 8;
+    -fx-content-display: right;
+    -fx-cursor: hand;}
+
+.rent-btn:hover {    -fx-background-color: @accent-hover@;}
+
+.rent-btn .ikonli-font-icon {    -fx-icon-color: @text-on-accent@;}
+
+.rent-plan {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10 12;}
+
+.rent-plan-name {    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.rent-fine {    -fx-font-size: 11px;
+    -fx-text-fill: @text-dim@;}
+
+.rent-step-num {    -fx-background-color: @accent-soft@;
+    -fx-background-radius: 12;
+    -fx-text-fill: @accent@;
+    -fx-font-family: "Inter SemiBold";
+    -fx-font-size: 13px;
+    -fx-alignment: center;
+    -fx-min-width: 24px;
+    -fx-min-height: 24px;
+    -fx-max-width: 24px;
+    -fx-max-height: 24px;}
+
+.rent-step-text {    -fx-font-size: 14px;
+    -fx-text-fill: @text@;
+    -fx-padding: 3 0 0 0;}
+
+.rent-promo {    -fx-background-color: @accent-faint@;
+    -fx-border-color: @accent-line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10 12;}
+
+.rent-hint {    -fx-background-color: @accent-faint@;
+    -fx-background-radius: 8;
+    -fx-text-fill: @text@;
+    -fx-font-size: 13px;
+    -fx-padding: 10 12;}
+
+/* Выбор тарифа на вкладке «Купить сервер» (26.10.2026): ui/RentPicker. Плитка — переключатель,
+   выбранная держит рамку акцента, как .source-tile: это состояние, а не наведение. */
+.rent-tile {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 8 12;
+    -fx-alignment: top-left;
+    -fx-cursor: hand;}
+
+.rent-tile:hover {    -fx-border-color: @accent-line@;
+    -fx-background-color: @hover-veil@;}
+
+.rent-tile:selected {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.rent-tile-title {    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.rent-tile-sub,
+.rent-tile-spec {    -fx-font-size: 11px;
+    -fx-text-fill: @text-dim@;}
+
+.rent-tile:selected .rent-tile-title,
+.rent-tile:selected .rent-tile-ram {    -fx-text-fill: @accent@;}
+
+.rent-tile:hover .rent-tile-sub,
+.rent-tile:selected .rent-tile-sub,
+.rent-tile:selected .rent-tile-spec {    -fx-text-fill: @text-muted@;}
+
+.rent-plan-tile {    -fx-padding: 10 12;}
+
+.rent-tile-ram {    -fx-font-size: 16px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.rent-tile-price {    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;
+    -fx-padding: 4 0 0 0;}
+
+.rent-tile-fit {    -fx-font-size: 11px;
+    -fx-text-fill: @text-muted@;}
+
+.rent-badge {    -fx-background-color: @accent@;
+    -fx-background-radius: 4;
+    -fx-text-fill: @text-on-accent@;
+    -fx-font-size: 10px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-padding: 1 6;}
+
+.rent-region {    -fx-font-size: 11px;
+    -fx-text-fill: @text-dim@;
+    -fx-padding: 2 0 0 0;}
+
+.rent-spec {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 4 9;}
+
+.rent-spec .label {    -fx-font-size: 12px;
+    -fx-text-fill: @text@;}
+
+.rent-spec .ikonli-font-icon {    -fx-icon-color: @text-muted@;}
+
+.rent-spec.strong {    -fx-border-color: @accent-line@;
+    -fx-background-color: @accent-faint@;}
+
+.rent-spec.strong .ikonli-font-icon {    -fx-icon-color: @accent@;}
+
+.rent-pay-row {    -fx-padding: 6 0 0 0;}
+
+.rent-summary {    -fx-font-size: 14px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+/* server.properties при создании сервера (17.10.2026): ui/ServerPropsEditor. */
+.sp-tile {    -fx-background-color: @surface-2@;
+    -fx-border-color: @line@;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 8 10 6 10;}
+
+.sp-label {    -fx-font-size: 13px;
+    -fx-font-family: "Inter SemiBold";
+    -fx-text-fill: @text@;}
+
+.sp-key {    -fx-font-size: 11px;
+    -fx-font-family: "JetBrains Mono";
+    -fx-text-fill: @text-dim@;}
+
+.sp-num {    -fx-pref-width: 64;
+    -fx-alignment: center-right;}
+
+.sp-step {    -fx-background-color: @surface@;
+    -fx-border-color: @line-strong@;
+    -fx-border-width: 1;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-text-fill: @text@;
+    -fx-font-size: 11px;
+    -fx-padding: 0 6;
+    -fx-min-height: 16;
+    -fx-pref-height: 16;
+    -fx-cursor: hand;}
+
+.sp-step:hover {    -fx-border-color: @accent@;
+    -fx-background-color: @accent-soft@;}
+
+.sp-scroll, .sp-scroll > .viewport {    -fx-background-color: transparent;
+    -fx-background: transparent;}
+
+/* Карточки сборок на главной при наведении увеличиваются на 3,5% (Motion.installFeedback), а
+   полоса — это ScrollPane, который режет всё за своими краями: край увеличенной карточки
+   срезался (17.10.2026, жалоба владельца). Запас по краям — больше, чем добавляет увеличение. */
+.home-build-strip {    -fx-padding: 8;}
+
+.home-vanilla-holder {    -fx-padding: 8 0 8 0;}
+
+/* Кнопка-меню «.mrpack» во вкладке «Моды» (17.10.2026). Как secondary-button она сливалась с
+   фоном: у MenuButton своя подпись, и цвет текста кнопки до неё не доходил. Заливка — цвет
+   текста темы: в тёмных темах кнопка белая, в белой — тёмная, чтобы не пропасть на белом фоне. */
+.mrpack-btn {    -fx-background-color: @text@;
+    -fx-background-radius: 8;
+    -fx-border-width: 0;
+    -fx-padding: 6 12;
+    -fx-cursor: hand;}
+
+.mrpack-btn:hover {    -fx-background-color: @text-muted@;}
+
+.mrpack-btn > .label {    -fx-text-fill: @bg@;
+    -fx-font-family: "Inter SemiBold";
+    -fx-font-size: 14px;}
+
+.mrpack-btn .ikonli-font-icon {    -fx-icon-color: @bg@;}
+
+.mrpack-btn > .arrow-button {    -fx-background-color: transparent;
+    -fx-padding: 0 0 0 8;}
+
+.mrpack-btn > .arrow-button > .arrow {    -fx-background-color: @bg@;}

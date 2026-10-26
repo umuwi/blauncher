@@ -131,6 +131,96 @@ public class ModrinthService {
         return found;
     }
 
+    /**
+     * Версии Modrinth целиком по sha1 файлов — с зависимостями, загрузчиками и версиями игры.
+     * Для «Починки сборки» (18.10.2026): по ним видно, какие обязательные моды автор указал на
+     * Modrinth, хотя в самом jar их нет. Неизвестных Modrinth файлов в ответе просто не будет.
+     */
+    public Map<String, JsonObject> versionsByHash(Collection<String> sha1Hashes) throws IOException {
+        Map<String, JsonObject> found = new HashMap<>();
+        JsonArray hashes = new JsonArray();
+        for (String hash : sha1Hashes) {
+            if (hash != null && !hash.isBlank()) hashes.add(hash.toLowerCase());
+        }
+        if (hashes.isEmpty()) return found;
+        JsonObject body = new JsonObject();
+        body.add("hashes", hashes);
+        body.addProperty("algorithm", "sha1");
+        Http.Response resp = Http.post(API_BASE + "/version_files", body.toString(),
+                "application/json", Map.of("User-Agent", USER_AGENT), java.time.Duration.ofSeconds(20));
+        if (!resp.ok()) throw new IOException("Modrinth: HTTP " + resp.status());
+        JsonObject root = JsonParser.parseString(resp.text()).getAsJsonObject();
+        for (String hash : root.keySet()) {
+            if (root.get(hash).isJsonObject()) found.put(hash.toLowerCase(), root.getAsJsonObject(hash));
+        }
+        return found;
+    }
+
+    /** Все версии проекта под эту версию игры и загрузчик, новые первыми (для точной версии в «Починке сборки»). */
+    public JsonArray listVersions(String projectId, String mcVersion, String loader) throws IOException {
+        StringBuilder url = new StringBuilder(API_BASE + "/project/" + URLEncoder.encode(projectId, StandardCharsets.UTF_8) + "/version?");
+        if (loader != null && !loader.isBlank()) {
+            url.append("loaders=").append(URLEncoder.encode("[\"" + loader.toLowerCase() + "\"]", StandardCharsets.UTF_8)).append("&");
+        }
+        if (mcVersion != null && !mcVersion.isBlank()) {
+            url.append("game_versions=").append(URLEncoder.encode("[\"" + mcVersion + "\"]", StandardCharsets.UTF_8));
+        }
+        Http.Response resp = get(url.toString());
+        if (!resp.ok()) throw new IOException("Modrinth: HTTP " + resp.status());
+        return JsonParser.parseString(resp.text()).getAsJsonArray();
+    }
+
+    /** Проект по id или slug; нет такого — null. */
+    public JsonObject project(String idOrSlug) throws IOException {
+        Http.Response resp = get(API_BASE + "/project/" + URLEncoder.encode(idOrSlug, StandardCharsets.UTF_8));
+        if (resp.status() == 404) return null;
+        if (!resp.ok()) throw new IOException("Modrinth: HTTP " + resp.status());
+        return JsonParser.parseString(resp.text()).getAsJsonObject();
+    }
+
+    /** Файл, который лежит на Modrinth: для экспорта сборки в .mrpack (17.10.2026). */
+    public record HostedFile(String url, String sha1, String sha512, long size) {}
+
+    /**
+     * Ссылка, sha512 и размер для каждого sha1, который Modrinth знает, — тот же запрос
+     * version_files, что у {@link #projectIdsByHash}. Чего нет в ответе, того на Modrinth нет
+     * (мод с CurseForge, свой jar): экспорт кладёт такие файлы внутрь архива.
+     */
+    public Map<String, HostedFile> hostedFilesByHash(Collection<String> sha1Hashes) throws IOException {
+        Map<String, HostedFile> found = new HashMap<>();
+        JsonArray hashes = new JsonArray();
+        for (String hash : sha1Hashes) {
+            if (hash != null && !hash.isBlank()) hashes.add(hash.toLowerCase());
+        }
+        if (hashes.isEmpty()) return found;
+
+        JsonObject body = new JsonObject();
+        body.add("hashes", hashes);
+        body.addProperty("algorithm", "sha1");
+        Http.Response resp = Http.post(API_BASE + "/version_files", body.toString(),
+                "application/json", Map.of("User-Agent", USER_AGENT), java.time.Duration.ofSeconds(30));
+        if (!resp.ok()) throw new IOException("Modrinth ответил " + resp.status());
+
+        JsonObject root = JsonParser.parseString(resp.text()).getAsJsonObject();
+        for (String hash : root.keySet()) {
+            if (!root.get(hash).isJsonObject()) continue;
+            JsonObject version = root.getAsJsonObject(hash);
+            if (!version.has("files") || !version.get("files").isJsonArray()) continue;
+            for (var el : version.getAsJsonArray("files")) {
+                if (!el.isJsonObject()) continue;
+                JsonObject file = el.getAsJsonObject();
+                JsonObject h = file.has("hashes") && file.get("hashes").isJsonObject() ? file.getAsJsonObject("hashes") : null;
+                if (h == null || !h.has("sha1") || !h.has("sha512") || !file.has("url")) continue;
+                if (!hash.equalsIgnoreCase(h.get("sha1").getAsString())) continue;
+                long size = file.has("size") ? file.get("size").getAsLong() : 0;
+                found.put(hash.toLowerCase(), new HostedFile(file.get("url").getAsString(),
+                        hash.toLowerCase(), h.get("sha512").getAsString().toLowerCase(), size));
+                break;
+            }
+        }
+        return found;
+    }
+
     // ---------------------------------------------------------------
     // Content types
     // ---------------------------------------------------------------
@@ -338,7 +428,13 @@ public class ModrinthService {
 
     /**
      * Returns the best Modrinth version ID for a project that matches
-     * the given Minecraft version and loader.
+     * the given Minecraft version and loader, or {@code null} if the project has no such version.
+     * IOException — только когда Modrinth не ответил (сеть, HTTP-ошибка).
+     *
+     * 25.10.2026: раньше «версии нет» тоже было IOException, и installModIntoBuild ни разу не дошёл
+     * до своей ветки null с подсказкой «есть для 1.20–1.21.11, создайте сборку» — за два дня 7 человек
+     * получили вместо неё «Не удалось поставить — подробности в журнале» около 60 раз (чаще на 26.3).
+     * А «Починка сборки» принимала то же исключение за сбой сети и не говорила, что версии нет.
      */
     public String resolveBestVersion(String projectId, String mcVersion, String loader)
             throws IOException, InterruptedException {
@@ -359,12 +455,7 @@ public class ModrinthService {
         }
 
         JsonArray versions = JsonParser.parseString(resp.text()).getAsJsonArray();
-        if (versions.isEmpty()) {
-            throw new IOException("No version of this mod supports " + loader
-                    + " on Minecraft " + mcVersion + ". This mod may publish a separate "
-                    + "project for that loader (e.g. \"create-fabric\" instead of \"create\") "
-                    + "- try searching for it by name with the loader suffix.");
-        }
+        if (versions.isEmpty()) return null;
 
         // First element is the newest compatible version
         return versions.get(0).getAsJsonObject().get("id").getAsString();
@@ -435,9 +526,9 @@ public class ModrinthService {
                 // Не версию, прибитую автором (она часто под другую версию игры), а лучшую под эту сборку.
                 String best = null;
                 try {
-                    best = resolveBestVersion(projectId, mcVersion, loader);
-                } catch (IOException noCompatible) {
-                    // Покажем игроку, что такой мод нужен, но поставить его нельзя.
+                    best = resolveBestVersion(projectId, mcVersion, loader);   // null — версии нет
+                } catch (IOException lookupFailed) {
+                    // Modrinth не ответил — покажем, что такой мод нужен, но поставить его сейчас нельзя.
                 }
                 pending.put(projectId, best);
                 if (best != null) queue.add(best);
@@ -608,7 +699,7 @@ public class ModrinthService {
     }
 
     /** sha1 файла в нижнем регистре — в таком виде его публикует Modrinth. */
-    private static String sha1Of(Path file) throws IOException {
+    static String sha1Of(Path file) throws IOException {
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-1");
             try (java.io.InputStream in = Files.newInputStream(file)) {

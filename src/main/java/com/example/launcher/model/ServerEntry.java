@@ -99,6 +99,9 @@ public class ServerEntry {
     private String sshPrivilege;
     /** PRETTY_NAME из /etc/os-release на момент последней проверки. */
     private String sshOs;
+    /** "servhost" — подключён через «Я купил» после аренды на serv.host (ServHostRent). Только для
+     *  счётчика; никаких данных аккаунта хостинга здесь нет. null — добавлен обычным способом. */
+    private String rentedVia;
     // Установка Minecraft на VPS (этап 2). Заполняются после успешной установки — по ним экран
     // сервера понимает, что ставить уже нечего, а этап 3 — какой службой управлять.
     /** Версия загрузчика (Fabric/Forge/NeoForge), null для Vanilla и Paper. */
@@ -334,6 +337,8 @@ public class ServerEntry {
     public void setSshPrivilege(String sshPrivilege) { this.sshPrivilege = sshPrivilege; }
     public String getSshOs() { return sshOs; }
     public void setSshOs(String sshOs) { this.sshOs = sshOs; }
+    public String getRentedVia() { return rentedVia; }
+    public void setRentedVia(String rentedVia) { this.rentedVia = rentedVia; }
     public String getLoaderVersion() { return loaderVersion; }
     public void setLoaderVersion(String loaderVersion) { this.loaderVersion = loaderVersion; }
     public String getSshServerDir() { return sshServerDir; }

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Запуск BLauncher на Linux.
+#
+# Лаунчер ищет config/ и launcher_root/ относительно рабочей папки (на Windows это папка
+# установки). На Linux папка установки может быть только для чтения, поэтому данные живут в
+# $XDG_DATA_HOME/BLauncher (обычно ~/.local/share/BLauncher), а этот скрипт переходит туда
+# перед запуском. Свою папку можно задать через BLAUNCHER_HOME.
+HERE="$(dirname "$(readlink -f "$0")")"
+DATA="${BLAUNCHER_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/BLauncher}"
+mkdir -p "$DATA" && cd "$DATA" || exit 1
+exec "$HERE/bin/BLauncher" "$@"

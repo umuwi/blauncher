@@ -196,7 +196,7 @@ public class PluginsPanelController {
         buyBtn.getStyleClass().add("server-action");
         buyBtn.setOnAction(e -> {
             try {
-                java.awt.Desktop.getDesktop().browse(java.net.URI.create(plugin.getFunpayUrl()));
+                com.example.launcher.service.Os.browse(plugin.getFunpayUrl());
             } catch (Exception ex) {
                 host.showToast("Не удалось открыть браузер: " + ex.getMessage(), "error");
             }

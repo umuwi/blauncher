@@ -179,11 +179,25 @@ public class ModLoaderService {
     // -------------------- FABRIC --------------------
     private void installFabric(String mc, String fabricVer, LogCallback log) throws Exception {
         log.onLog("[FABRIC] " + fabricVer + " for MC " + mc);
-        JsonObject profile = vds.getFabricProfileJson(mc, fabricVer);
         Path profDir = librariesDir.resolve("fabric");
         Files.createDirectories(profDir);
         Path profJson = profDir.resolve("fabric-" + mc + ".json");
-        Files.writeString(profJson, profile.toString());
+        // Маркер от ПРОШЛОЙ установки убираем до того, как перезапишем профиль. Он один на версию
+        // игры, а профиль ниже уже новый: 19.10.2026 (e0f4dc81, Fabric 1.21.4) установка
+        // оборвалась на ConnectException, старый маркер остался, следующее «Играть» сочло Fabric
+        // установленным и запустило игру по новому профилю без его библиотек — ClassNotFoundException.
+        Files.deleteIfExists(profDir.resolve("fabric-" + mc + ".mainclass"));
+        JsonObject profile;
+        try {
+            profile = vds.getFabricProfileJson(mc, fabricVer);
+            Files.writeString(profJson, profile.toString());
+        } catch (IOException e) {
+            // meta.fabricmc.net не ответил, но профиль этой самой сборки уже лежит на диске
+            // (прошлая установка оборвалась на библиотеках) — доустанавливаем по нему.
+            if (!fabricVer.equals(vds.installedFabricLoader(mc))) throw e;
+            log.onLog("[FABRIC] meta.fabricmc.net не отвечает — беру сохранённый профиль " + fabricVer);
+            profile = com.google.gson.JsonParser.parseString(Files.readString(profJson)).getAsJsonObject();
+        }
 
         if (profile.has("libraries")) {
             var libs = profile.getAsJsonArray("libraries");
@@ -508,6 +522,35 @@ public class ModLoaderService {
         return fromJson != null ? fromJson : "net.minecraft.client.main.Main";
     }
 
+    /**
+     * Fabric для этой версии игры стоит целиком: маркер есть, профиль той же сборки загрузчика,
+     * и все библиотеки из профиля лежат на диске. Только маркера мало — он один на версию игры и
+     * переживает смену сборки загрузчика (см. installFabric), а библиотеки могли удалить руками
+     * или антивирусом. Для остальных загрузчиков — прежняя проверка по маркеру.
+     */
+    public boolean isLoaderReady(String versionId, String modLoader, String loaderVersion) {
+        if (!"fabric".equals(modLoader)) {
+            return !"net.minecraft.client.main.Main".equals(resolveMainClass(versionId, modLoader, loaderVersion));
+        }
+        Path profDir = librariesDir.resolve("fabric");
+        if (!Files.exists(profDir.resolve("fabric-" + versionId + ".mainclass"))) return false;
+        if (loaderVersion != null && !loaderVersion.isBlank()
+                && !loaderVersion.equals(vds.installedFabricLoader(versionId))) return false;
+        try {
+            JsonObject profile = JsonParser.parseString(
+                    Files.readString(profDir.resolve("fabric-" + versionId + ".json"))).getAsJsonObject();
+            if (!profile.has("libraries")) return true;
+            for (var el : profile.getAsJsonArray("libraries")) {
+                if (!el.isJsonObject() || !el.getAsJsonObject().has("name")) continue;
+                Path lib = mavenToPath(el.getAsJsonObject().get("name").getAsString());
+                if (lib != null && (!Files.exists(lib) || Files.size(lib) == 0)) return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private String readMainClassFromVersionDir(String versionId) {
         try {
             Path p = gameDir.resolve("versions/" + versionId + "/" + versionId + ".json");
@@ -550,7 +593,7 @@ public class ModLoaderService {
     }
 
     private LibResult downloadLibraryList(com.google.gson.JsonArray libs, LogCallback log, String mavenBase) throws Exception {
-        record LibDownload(String url, Path dest) {}
+        record LibDownload(String url, Path dest, String sha1) {}
         List<LibDownload> toDownload = new ArrayList<>();
         for (var el : libs) {
             if (!el.isJsonObject()) continue;
@@ -558,11 +601,15 @@ public class ModLoaderService {
             String name = lib.has("name") ? lib.get("name").getAsString() : null;
             Path libPath = null;
             String url = null;
+            // Fabric Meta с 2024 года отдаёт sha1 у каждой библиотеки — сверяем, если он есть,
+            // чтобы оборванный посреди тела ответ не лёг в libraries/ как «уже скачано».
+            String sha1 = lib.has("sha1") && lib.get("sha1").isJsonPrimitive() ? lib.get("sha1").getAsString() : null;
 
             if (lib.has("downloads") && lib.getAsJsonObject("downloads").has("artifact")) {
                 JsonObject art = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
                 url = art.get("url").getAsString();
                 libPath = librariesDir.resolve(art.get("path").getAsString());
+                if (art.has("sha1")) sha1 = art.get("sha1").getAsString();
             } else if (lib.has("url") && lib.has("path")) {
                 url = lib.get("url").getAsString();
                 libPath = librariesDir.resolve(lib.get("path").getAsString());
@@ -572,13 +619,14 @@ public class ModLoaderService {
             }
 
             if (libPath != null && url != null && !Files.exists(libPath)) {
-                toDownload.add(new LibDownload(url, libPath));
+                toDownload.add(new LibDownload(url, libPath, sha1));
             }
         }
 
         if (toDownload.isEmpty()) return new LibResult(0, 0);
 
         java.util.concurrent.atomic.AtomicInteger cnt = new java.util.concurrent.atomic.AtomicInteger(0);
+        List<LibDownload> failed = java.util.Collections.synchronizedList(new ArrayList<>());
         ExecutorService pool = Executors.newFixedThreadPool(Math.min(LIB_DOWNLOAD_THREADS, toDownload.size()),
                 r -> {
                     // daemon: прерывание не разрывает блокирующее чтение сокета, и не-daemon
@@ -595,9 +643,10 @@ public class ModLoaderService {
                 futures.add(pool.submit(() -> {
                     try {
                         Files.createDirectories(lib.dest().getParent());
-                        vds.downloadFile(lib.url(), lib.dest());
+                        vds.downloadFile(lib.url(), lib.dest(), lib.sha1());
                         cnt.incrementAndGet();
                     } catch (Exception e) {
+                        failed.add(lib);
                         log.onLog("[LIB] Failed: " + e.getMessage());
                     }
                 }));
@@ -615,6 +664,26 @@ public class ModLoaderService {
             }
         } finally {
             pool.shutdown();
+        }
+        // Второй заход по одной, с паузами. 16 параллельных соединений на рваной сети теряют
+        // сразу несколько файлов, а по одному те же файлы обычно докачиваются — раньше из-за
+        // двух-трёх недокачанных библиотек падала вся установка, и игроку оставалось только
+        // жать «Играть» снова и снова (c2e80bea, 16.10.2026: пять «phase=loader» подряд).
+        List<LibDownload> retry;
+        synchronized (failed) {
+            retry = new ArrayList<>(failed);
+        }
+        if (!retry.isEmpty()) {
+            log.onLog("[LIB] Докачиваю по одной: " + retry.size());
+            for (LibDownload lib : retry) {
+                if (Thread.currentThread().isInterrupted()) break;
+                try {
+                    vds.downloadFileWithRetries(lib.url(), lib.dest(), 3, lib.sha1());
+                    cnt.incrementAndGet();
+                } catch (Exception e) {
+                    log.onLog("[LIB] Не скачалась и со второго раза: " + lib.dest().getFileName());
+                }
+            }
         }
         return new LibResult(toDownload.size(), cnt.get());
     }

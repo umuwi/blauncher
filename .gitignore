@@ -44,3 +44,4 @@ hs_err_pid*.log
 Thumbs.db
 Desktop.ini
 .DS_Store
+/dist-linux/

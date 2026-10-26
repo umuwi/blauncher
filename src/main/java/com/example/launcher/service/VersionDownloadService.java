@@ -36,12 +36,23 @@ public class VersionDownloadService {
      *  of them again a second later) without ever showing a stale list for long. */
     private static final Duration LOADER_LIST_TTL = Duration.ofMinutes(15);
     private static final int LOADER_LIST_ATTEMPTS = 3;
+    /** У meta.fabricmc.net больше попыток: 16.10.2026 у игрока c2e80bea он отвечал примерно на
+     *  каждый пятый запрос, и трёх попыток подряд за секунду с небольшим не хватало. */
+    private static final int FABRIC_LIST_ATTEMPTS = 5;
     // Asset/library objects are many but tiny, so the download is latency-bound, not bandwidth-
     // bound - more parallel connections finish the thousands of small GETs noticeably faster on a
     // typical connection (the shared HttpClient pools/reuses connections, and Mojang's CDN serves
     // this level of concurrency fine). Kept modest enough not to look like a DoS to the CDN.
     private static final int ASSET_DOWNLOAD_THREADS = 16;
     private static final int MAX_RETRIES = 3;
+    /**
+     * Сколько ждать, пока не придёт ни одного файла и ни одного байта, прежде чем остановить
+     * загрузку с понятной ошибкой. Больше, чем Http.RECONNECT_BUDGET (90 с) плюс таймаут соединения,
+     * — короткий обрыв переживаем, а не роняем.
+     */
+    static Duration STALL_LIMIT = Duration.ofSeconds(150);
+    /** Столько недокачанных ассетов — ещё «пара файлов» (игра пойдёт без них), больше — пропала связь. */
+    private static final int MAX_SILENT_ASSET_FAILURES = 200;
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(30);
 
     private final Path versionsDir;
@@ -57,6 +68,12 @@ public class VersionDownloadService {
      *  list could not be fetched", and callers (the launch flow) need to tell those apart before
      *  deciding what to tell the player. Best-effort: set under concurrency, last writer wins. */
     private volatile String lastNeoForgeListError;
+    /** См. {@link #getFabricVersions(String)}: откуда взят список и почему не ответила сеть. */
+    private volatile String lastFabricListSource;
+    private volatile String lastFabricListError;
+    private volatile String lastForgeListSource;
+    private volatile String lastForgeListError;
+    private volatile String lastNeoForgeListSource;
 
     public VersionDownloadService(Path gameDir) {
         this.gameDir = gameDir;
@@ -166,40 +183,209 @@ public class VersionDownloadService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Сборки Forge для {@code mcVersion}, новые первыми. Запасной путь тот же, что у Fabric:
+     * сеть, затем уже установленный Forge, затем сохранённый список. 18.10.2026 (629f3d8b, 1.14.15):
+     * игрок полтора часа играл на Forge 1.20.1, потом maven.minecraftforge.net перестал отвечать —
+     * и «Играть» дало «no_build», хотя Forge лежал на диске. Ошибка сети здесь глоталась молча и
+     * выглядела как «для этой версии Forge нет».
+     */
     public List<String> getForgeVersions(String mcVersion) throws IOException, InterruptedException {
+        String cacheName = "forge-" + mcVersion;
         try {
             String url = "https://maven.minecraftforge.net/api/maven/versions/releases/net/minecraftforge/forge";
             TextResponse response = httpGetStringRetry(url, null, LOADER_LIST_ATTEMPTS);
-            if (response.statusCode() != 200) return Collections.emptyList();
-            JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-            JsonArray arr = root.getAsJsonArray("versions");
-            List<String> result = new ArrayList<>();
-            for (var el : arr.asList()) {
-                String v = el.getAsString();
-                if (v.startsWith(mcVersion + "-")) {
-                    result.add(v.substring(mcVersion.length() + 1));
+            if (response.statusCode() == 200) {
+                JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+                JsonArray arr = root.getAsJsonArray("versions");
+                List<String> result = new ArrayList<>();
+                for (var el : arr.asList()) {
+                    String v = el.getAsString();
+                    if (v.startsWith(mcVersion + "-")) {
+                        result.add(v.substring(mcVersion.length() + 1));
+                    }
                 }
+                Collections.reverse(result);
+                lastForgeListSource = "network";
+                lastForgeListError = null;
+                writeLoaderListCache(cacheName, result);
+                return result;
             }
-            Collections.reverse(result);
-            return result;
+            lastForgeListError = "HTTP " + response.statusCode();
         } catch (Exception e) {
-            return Collections.emptyList();
+            lastForgeListError = e.getClass().getSimpleName()
+                    + (e.getMessage() != null ? ": " + e.getMessage() : "");
+        }
+        // Сначала уже установленный: без сети новую сборку из сохранённого списка всё равно не скачать.
+        List<String> installed = installedForgeVersions(mcVersion);
+        if (!installed.isEmpty()) {
+            lastForgeListSource = "installed";
+            return installed;
+        }
+        List<String> cached = readLoaderListCache(cacheName);
+        lastForgeListSource = cached.isEmpty() ? null : "cache";
+        return cached;
+    }
+
+    /** Установленные версии Forge под {@code mcVersion}: ModLoaderService после установки пишет
+     *  libraries/forge/&lt;mc&gt;-forge-&lt;ver&gt;.mainclass. Новые первыми. */
+    private List<String> installedForgeVersions(String mcVersion) {
+        String prefix = mcVersion + "-forge-";
+        String suffix = ".mainclass";
+        List<String> out = new ArrayList<>();
+        try (var files = Files.list(librariesDir.resolve("forge"))) {
+            files.map(p -> p.getFileName().toString())
+                    .filter(n -> n.startsWith(prefix) && n.endsWith(suffix)
+                            && n.length() > prefix.length() + suffix.length())
+                    .forEach(n -> out.add(n.substring(prefix.length(), n.length() - suffix.length())));
+        } catch (IOException ignored) {
+            // папки нет — Forge не ставился
+        }
+        out.sort(VersionDownloadService::compareNumericDesc);
+        return out;
+    }
+
+    /** Откуда пришёл последний список Forge: "network", "cache", "installed" или null. */
+    public String getLastForgeListSource() {
+        return lastForgeListSource;
+    }
+
+    /** Почему не ответил maven.minecraftforge.net в последний раз, или null, если ответил. */
+    public String getLastForgeListError() {
+        return lastForgeListError;
+    }
+
+    /** Откуда пришёл последний список NeoForge: "network", "cache", "installed" или null. */
+    public String getLastNeoForgeListSource() {
+        return lastNeoForgeListSource;
+    }
+
+    /** Список сборок загрузчика с последнего удачного ответа сети. Пустой список не пишется:
+     *  «сборок нет» — правда только на сегодня, подставлять его потом незачем. */
+    private void writeLoaderListCache(String name, List<String> list) {
+        if (list.isEmpty()) return;
+        try {
+            Path cache = gameDir.resolve("cache").resolve(safeName(name) + ".json");
+            Files.createDirectories(cache.getParent());
+            JsonArray arr = new JsonArray();
+            list.forEach(arr::add);
+            Files.writeString(cache, arr.toString());
+        } catch (IOException ignored) {
+            // кеш — подстраховка, без него лаунчер работает как раньше
         }
     }
 
+    private List<String> readLoaderListCache(String name) {
+        Path cache = gameDir.resolve("cache").resolve(safeName(name) + ".json");
+        try {
+            if (!Files.isRegularFile(cache)) return Collections.emptyList();
+            List<String> out = new ArrayList<>();
+            for (var el : JsonParser.parseString(Files.readString(cache)).getAsJsonArray()) {
+                out.add(el.getAsString());
+            }
+            return out;
+        } catch (Exception e) {
+            return Collections.emptyList();   // битый кеш — как будто его нет
+        }
+    }
+
+    /**
+     * Сборки Fabric Loader для {@code mcVersion}, новые первыми.
+     *
+     * <p>Откуда список — по порядку: meta.fabricmc.net (с повторами), профиль уже установленного
+     * Fabric, копия последнего удачного ответа на диске. 16.10.2026 двое игроков на 1.14.14
+     * получили подряд «ConnectException phase=loader» и «no_build»: meta.fabricmc.net у них не
+     * отвечал, а пустой список лаунчер понимал как «для этой версии Fabric нет» — один из них
+     * так и ушёл, не поиграв, хотя у второго Fabric для этой версии уже был скачан. Сборка Fabric
+     * Loader от версии игры не зависит, поэтому вчерашний список ничем не хуже свежего.
+     */
     public List<String> getFabricVersions(String mcVersion) throws IOException, InterruptedException {
+        Path cache = gameDir.resolve("cache").resolve("fabric-loader-" + safeName(mcVersion) + ".json");
         try {
             String url = FABRIC_META + "loader/" + mcVersion;
-            TextResponse response = httpGetStringRetry(url, null, LOADER_LIST_ATTEMPTS);
-            if (response.statusCode() != 200) return Collections.emptyList();
-            JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
-            return arr.asList().stream()
-                    .map(o -> o.getAsJsonObject().get("loader").getAsJsonObject().get("version").getAsString())
-                    .limit(20)
-                    .collect(Collectors.toList());
+            TextResponse response = httpGetStringRetry(url, null, FABRIC_LIST_ATTEMPTS);
+            if (response.statusCode() == 200) {
+                List<String> list = parseFabricLoaderList(response.body());
+                lastFabricListSource = "network";
+                lastFabricListError = null;
+                if (!list.isEmpty()) {
+                    try {
+                        Files.createDirectories(cache.getParent());
+                        Files.writeString(cache, response.body());
+                    } catch (IOException ignored) {
+                        // кеш — подстраховка, без него лаунчер работает как раньше
+                    }
+                }
+                // 200 с пустым массивом — у Fabric правда нет сборок под эту версию (снапшот
+                // вышел час назад), и подставлять сюда старый кеш было бы неправдой.
+                return list;
+            }
+            lastFabricListError = "HTTP " + response.statusCode();
         } catch (Exception e) {
-            return Collections.emptyList();
+            lastFabricListError = e.getClass().getSimpleName()
+                    + (e.getMessage() != null ? ": " + e.getMessage() : "");
         }
+        // Уже скачанный Fabric — раньше сохранённого списка: тот предложил бы самую новую сборку,
+        // а без сети её не скачать (18.10.2026, тот же случай у Forge).
+        String installed = installedFabricLoader(mcVersion);
+        if (installed != null) {
+            lastFabricListSource = "installed";
+            return List.of(installed);
+        }
+        try {
+            if (Files.isRegularFile(cache)) {
+                List<String> list = parseFabricLoaderList(Files.readString(cache));
+                if (!list.isEmpty()) {
+                    lastFabricListSource = "cache";
+                    return list;
+                }
+            }
+        } catch (Exception ignored) {
+            // битый кеш — как будто его нет
+        }
+        lastFabricListSource = null;
+        return Collections.emptyList();
+    }
+
+    private static List<String> parseFabricLoaderList(String body) {
+        JsonArray arr = JsonParser.parseString(body).getAsJsonArray();
+        return arr.asList().stream()
+                .map(o -> o.getAsJsonObject().get("loader").getAsJsonObject().get("version").getAsString())
+                .limit(20)
+                .collect(Collectors.toList());
+    }
+
+    /** Версия Fabric Loader из уже скачанного профиля (id вида «fabric-loader-0.17.2-1.21.11»)
+     *  или null. ModLoaderService пишет профиль в libraries/fabric/fabric-&lt;mc&gt;.json. */
+    public String installedFabricLoader(String mcVersion) {
+        Path prof = librariesDir.resolve("fabric").resolve("fabric-" + mcVersion + ".json");
+        try {
+            if (!Files.isRegularFile(prof)) return null;
+            JsonObject o = JsonParser.parseString(Files.readString(prof)).getAsJsonObject();
+            String id = o.has("id") ? o.get("id").getAsString() : "";
+            String prefix = "fabric-loader-";
+            String suffix = "-" + mcVersion;
+            if (id.startsWith(prefix) && id.endsWith(suffix) && id.length() > prefix.length() + suffix.length()) {
+                return id.substring(prefix.length(), id.length() - suffix.length());
+            }
+        } catch (Exception ignored) {
+            // нечитаемый профиль — как будто его нет
+        }
+        return null;
+    }
+
+    private static String safeName(String s) {
+        return s == null ? "" : s.replaceAll("[^A-Za-z0-9._\\-]", "_");
+    }
+
+    /** Откуда пришёл последний список Fabric: "network", "cache", "installed" или null (ниоткуда). */
+    public String getLastFabricListSource() {
+        return lastFabricListSource;
+    }
+
+    /** Почему не ответил meta.fabricmc.net в последний раз, или null, если ответил. */
+    public String getLastFabricListError() {
+        return lastFabricListError;
     }
 
     /**
@@ -375,6 +561,8 @@ public class VersionDownloadService {
             if (NEOFORGE_LEGACY_MC.equals(mcVersion)) {
                 List<String> legacy = fetchNeoForgeLegacyVersions();
                 lastNeoForgeListError = null;
+                lastNeoForgeListSource = "network";
+                writeLoaderListCache("neoforge-" + mcVersion, legacy);
                 return legacy;
             }
             List<String> prefixes = neoForgePrefixes(mcVersion);
@@ -407,6 +595,8 @@ public class VersionDownloadService {
             result.addAll(fallback);
 
             lastNeoForgeListError = null;
+            lastNeoForgeListSource = "network";
+            writeLoaderListCache("neoforge-" + mcVersion, result);
             return result;
         } catch (Exception e) {
             // Never a silent empty list: the launch flow reports this string to the player instead
@@ -414,8 +604,62 @@ public class VersionDownloadService {
             lastNeoForgeListError = e.getMessage() != null ? e.getMessage() : e.toString();
             System.err.println("[NEOFORGE] Список версий для MC " + mcVersion + " недоступен: "
                     + lastNeoForgeListError);
+        }
+        // Как у Forge и Fabric: без сети — уже установленный NeoForge, затем сохранённый список,
+        // а не «no_build» при скачанном загрузчике.
+        List<String> installed = installedNeoForgeVersions(mcVersion);
+        if (!installed.isEmpty()) {
+            lastNeoForgeListSource = "installed";
+            return installed;
+        }
+        List<String> cached = readLoaderListCache("neoforge-" + mcVersion);
+        lastNeoForgeListSource = cached.isEmpty() ? null : "cache";
+        return cached;
+    }
+
+    /** Установленные версии NeoForge под {@code mcVersion} (по libraries/neoforge/neoforge-&lt;ver&gt;.mainclass),
+     *  в том же порядке, что и список из сети: сначала сборки ровно под эту версию игры. */
+    private List<String> installedNeoForgeVersions(String mcVersion) {
+        String prefix = "neoforge-";
+        String suffix = ".mainclass";
+        // Линейка 1.20.1 ставится как Forge: маркер «1.20.1-forge-47.1.106.mainclass» → «1.20.1-47.1.106».
+        String legacyPrefix = NEOFORGE_LEGACY_MC + "-forge-";
+        List<String> all = new ArrayList<>();
+        List<String> legacy = new ArrayList<>();
+        try (var files = Files.list(librariesDir.resolve("neoforge"))) {
+            files.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(suffix)).forEach(n -> {
+                String base = n.substring(0, n.length() - suffix.length());
+                if (base.startsWith(prefix) && base.length() > prefix.length()) {
+                    all.add(base.substring(prefix.length()));
+                } else if (base.startsWith(legacyPrefix) && base.length() > legacyPrefix.length()) {
+                    legacy.add(base.substring(legacyPrefix.length()));
+                }
+            });
+        } catch (IOException ignored) {
             return Collections.emptyList();
         }
+        if (NEOFORGE_LEGACY_MC.equals(mcVersion)) {
+            legacy.sort(VersionDownloadService::compareNumericDesc);
+            List<String> out = new ArrayList<>(legacy.size());
+            for (String v : legacy) out.add(NEOFORGE_LEGACY_MC + "-" + v);
+            return out;
+        }
+        List<String> prefixes = neoForgePrefixes(mcVersion);
+        List<String> exact = new ArrayList<>();
+        List<String> fallback = new ArrayList<>();
+        for (String v : all) {
+            for (int i = 0; i < prefixes.size(); i++) {
+                String pre = prefixes.get(i);
+                if (v.startsWith(pre + ".") || v.startsWith(pre + "-")) {
+                    (i == 0 ? exact : fallback).add(v);
+                    break;
+                }
+            }
+        }
+        sortNeoForgeVersionsDescending(exact);
+        sortNeoForgeVersionsDescending(fallback);
+        exact.addAll(fallback);
+        return exact;
     }
 
     private static void sortNeoForgeVersionsDescending(List<String> versions) {
@@ -549,7 +793,9 @@ public class VersionDownloadService {
     public com.google.gson.JsonObject getFabricProfileJson(String mcVersion, String fabricVersion)
             throws IOException, InterruptedException {
         String url = "https://meta.fabricmc.net/v2/versions/loader/" + mcVersion + "/" + fabricVersion + "/profile/json";
-        TextResponse response = httpGetString(url);
+        // С повторами, как список версий: это тот же meta.fabricmc.net, и единичный обрыв здесь
+        // обрывал всю установку («IOException phase=loader», 16.10.2026).
+        TextResponse response = httpGetStringRetry(url, null, FABRIC_LIST_ATTEMPTS);
         if (response.statusCode() != 200) {
             throw new IOException("Fabric profile not found for " + mcVersion + "/" + fabricVersion + " (HTTP " + response.statusCode() + ")");
         }
@@ -580,6 +826,21 @@ public class VersionDownloadService {
 
     private volatile int lastAssetFailures;
 
+    /**
+     * Отмена загрузки этим экземпляром — для фоновой загрузки игры при первом открытии
+     * (MainController.maybeStartPrefetch): как только человек жмёт «Играть», фоновую загрузку
+     * останавливаем и ждём, пока её потоки выйдут, чтобы две загрузки не писали одни и те же файлы.
+     */
+    private volatile boolean cancelled;
+
+    public void cancel() {
+        cancelled = true;
+    }
+
+    private void checkCancelled() throws InterruptedException {
+        if (cancelled) throw new InterruptedException("загрузка отменена");
+    }
+
     public void downloadVersion(String versionId, ProgressCallback progress) throws IOException, InterruptedException {
         criticalFailures.clear();
         lastAssetFailures = 0;
@@ -605,6 +866,7 @@ public class VersionDownloadService {
         // просто не запускается, а причина в логе ничем не подсказана.
         String clientSha1 = clientInfo.has("sha1") ? clientInfo.get("sha1").getAsString() : null;
 
+        checkCancelled();
         progress.onProgress("Скачивается: " + versionId + ".jar");
         Path clientJar = versionDir.resolve(versionId + ".jar");
         downloadFile(clientUrl, clientJar, clientSha1);
@@ -612,13 +874,15 @@ public class VersionDownloadService {
         // Patch client JAR for offline multiplayer
         try { VersionPatcher.patchClientJar(clientJar); } catch (Exception e) { System.err.println("[VersionPatcher] " + e.getMessage()); }
 
+        checkCancelled();
         progress.onProgress("Скачивается: библиотеки");
         System.out.println("[DOWNLOAD] Downloading libraries...");
         JsonArray libraries = versionData.getAsJsonArray("libraries");
-        downloadLibraries(libraries);
+        downloadLibraries(libraries, progress);
         progress.onProgress("Библиотеки скачаны");
         System.out.println("[DOWNLOAD] Downloaded libraries");
 
+        checkCancelled();
         progress.onProgress("Скачивается: ресурсы");
         System.out.println("[DOWNLOAD] Downloading assets...");
         String assetIndexUrl = versionData.getAsJsonObject("assetIndex").get("url").getAsString();
@@ -866,7 +1130,8 @@ public class VersionDownloadService {
      *  number in the hundreds for Forge/NeoForge, and each is a small file, so downloading them
      *  one at a time (as this used to) is dominated by per-request round-trip latency rather than
      *  bandwidth; the same ASSET_DOWNLOAD_THREADS pool used for assets fixes that here too. */
-    private void downloadLibraries(JsonArray libraries) throws IOException, InterruptedException {
+    private void downloadLibraries(JsonArray libraries, ProgressCallback progress)
+            throws IOException, InterruptedException {
         String nativeClassifier = getNativeClassifier();
         List<LibraryDownload> toDownload = new ArrayList<>();
         int skipped = 0;
@@ -919,10 +1184,16 @@ public class VersionDownloadService {
         if (toDownload.isEmpty()) return;
 
         System.out.println("[LIBRARIES] Downloading " + toDownload.size() + " libraries with " + ASSET_DOWNLOAD_THREADS + " threads...");
+        // Счёт «N/M» после каждой библиотеки: раньше весь этап шёл под одной строкой, и полоса
+        // стояла на 8 % до конца. По статистике 13–20.10.2026 трое новичков закрыли лаунчер именно
+        // на «8 % · библиотеки» через ~8 минут — на медленном канале это выглядело как зависание.
+        int total = toDownload.size();
+        AtomicInteger completed = new AtomicInteger(0);
         ExecutorService pool = Executors.newFixedThreadPool(ASSET_DOWNLOAD_THREADS);
         List<Future<?>> futures = new ArrayList<>();
         for (LibraryDownload lib : toDownload) {
             futures.add(pool.submit(() -> {
+                if (cancelled) return;
                 try {
                     Files.createDirectories(lib.dest().getParent());
                     downloadFileWithRetries(lib.url(), lib.dest(), MAX_RETRIES, lib.sha1());
@@ -930,22 +1201,55 @@ public class VersionDownloadService {
                     System.out.println("[LIBRARIES] Failed: " + lib.url() + " - " + e.getMessage());
                     criticalFailures.add(lib.dest().getFileName() + " (" + e.getMessage() + ")");
                 }
+                progress.onProgress("Скачивается: библиотеки " + completed.incrementAndGet() + "/" + total);
             }));
         }
-        // Same reasoning as downloadAssets(): bound each future so one hung connection (past
-        // connectTimeout, but stalled mid-response) can't stall this whole step forever.
-        // cancel(false), never cancel(true) - see the comment in downloadAssets().
-        Duration perLibDeadline = HTTP_TIMEOUT.multipliedBy(MAX_RETRIES + 1);
-        for (Future<?> f : futures) {
-            try {
-                f.get(perLibDeadline.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (ExecutionException ignored) {
-            } catch (TimeoutException e) {
-                f.cancel(false);
+        awaitOrStall(pool, completed, "библиотеки");
+        System.out.println("[LIBRARIES] Downloaded.");
+    }
+
+    /**
+     * Ждёт пул загрузок, пока идёт хоть какое-то движение: готов ещё один файл или пришли байты
+     * (большая библиотека на медленном канале качается долго, но байты идут). Если STALL_LIMIT нет
+     * ни того ни другого — снимает оставшиеся задачи и бросает SocketTimeoutException: лаунчер
+     * покажет «связь обрывается, нажмите «Играть» ещё раз — докачается только недостающее».
+     *
+     * 25.10.2026 (d963dd09): загрузка простояла на 21 % час. С 1.14.24 каждый файл при обрыве ждёт
+     * связь до 90 с и пробует трижды, а прежнее ожидание задач по одной (до 2 минут на каждую, по
+     * очереди) на тысячах ассетов растягивалось на часы — без единого сообщения.
+     */
+    private void awaitOrStall(ExecutorService pool, AtomicInteger completed, String what)
+            throws IOException, InterruptedException {
+        pool.shutdown();
+        try {
+            awaitOrStall0(pool, completed, what);
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            pool.awaitTermination(15, TimeUnit.SECONDS);   // потоки выходят сами: файлы мелкие, у чтения таймаут
+            throw e;
+        }
+    }
+
+    private void awaitOrStall0(ExecutorService pool, AtomicInteger completed, String what)
+            throws IOException, InterruptedException {
+        int lastDone = completed.get();
+        long lastBytes = Http.DOWNLOADED.get();
+        long lastAt = System.currentTimeMillis();
+        while (!pool.awaitTermination(2, TimeUnit.SECONDS)) {
+            checkCancelled();
+            int done = completed.get();
+            long bytes = Http.DOWNLOADED.get();
+            long now = System.currentTimeMillis();
+            if (done != lastDone || bytes != lastBytes) {
+                lastDone = done;
+                lastBytes = bytes;
+                lastAt = now;
+            } else if (now - lastAt > STALL_LIMIT.toMillis()) {
+                pool.shutdownNow();
+                throw new java.net.SocketTimeoutException("За " + STALL_LIMIT.toSeconds() + " с не скачалось ничего ("
+                        + what + ", готово " + done + ") — связь с серверами Minecraft пропала");
             }
         }
-        pool.shutdown();
-        System.out.println("[LIBRARIES] Downloaded.");
     }
 
     /** Returns the Minecraft classifier string for the current OS (natives-windows, natives-linux, natives-macos). */
@@ -997,6 +1301,7 @@ public class VersionDownloadService {
         List<Future<?>> futures = new ArrayList<>();
         for (AssetEntry entry : entries) {
             futures.add(pool.submit(() -> {
+                if (cancelled) return;
                 try {
                     // Имя ассета — его sha1: сверяем, обрезанный ответ не ляжет под настоящим именем.
                     downloadFileWithRetries(entry.url, entry.dest, MAX_RETRIES, entry.hash);
@@ -1012,42 +1317,37 @@ public class VersionDownloadService {
             }));
         }
 
-        // Wait for all tasks to complete. Each future is bounded - downloadFileWithRetries()
-        // already retries/timeouts per-attempt, but a connection that hangs *after* connecting
-        // (so HTTP_TIMEOUT's connectTimeout never trips) could otherwise stall this whole loop,
-        // and by extension the entire downloadVersion() call, forever with zero visible error.
-        //
-        // cancel(false), not cancel(true): a running download is already bounded by the connect and
-        // read timeouts on its own connection, so interrupting it buys nothing, while cancel(false)
-        // still stops tasks that never started - the case that could actually stall this loop.
-        // (An earlier version of this comment blamed cancel(true) for the launcher's 100%-CPU bug.
-        // That was wrong: the spin came from java.net.http itself and survived the switch to
-        // cancel(false). See the HTTP section at the top of this class for what actually fixed it.)
-        Duration perAssetDeadline = HTTP_TIMEOUT.multipliedBy(MAX_RETRIES + 1);
-        for (Future<?> f : futures) {
-            try {
-                f.get(perAssetDeadline.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (ExecutionException ignored) {
-            } catch (TimeoutException e) {
-                f.cancel(false);
-                failed.incrementAndGet();
-            }
-        }
-        pool.shutdown();
+        awaitOrStall(pool, completed, "ресурсы");
 
         // Второй проход по недоставшимся — по одному, без спешки. 14.10.2026 в чистой 1.21.4 один
         // ассет из 4039 (иконка окна) не скачался за обрыв сети, и игра пошла без него; проверка
         // isVersionFullyInstalled смотрит лишь 25 ассетов наугад, так что сама дыра не заросла бы.
         // Обрывы через VPN короткие — к концу основной загрузки связь обычно уже есть.
+        //
+        // 25.10.2026: этот проход шёл молча, а при плохой связи каждый файл ждал её минутами —
+        // полоса стояла на 94 %, и двое закрыли лаунчер. Теперь он пишет, сколько добирает, и
+        // останавливается по тому же правилу «ни байта за STALL_LIMIT». Если не скачалась заметная
+        // часть, это не «пара файлов», а пропавшая связь — тогда сразу говорим об этом.
+        if (failed.get() > MAX_SILENT_ASSET_FAILURES) {
+            throw new java.net.SocketTimeoutException("Не скачались " + failed.get() + " из " + total
+                    + " файлов ресурсов — связь с серверами Minecraft пропадает");
+        }
         if (failed.get() > 0) {
             int recovered = 0;
+            int left = failed.get(), tried = 0;
+            long lastBytes = Http.DOWNLOADED.get(), lastAt = System.currentTimeMillis();
             for (AssetEntry entry : entries) {
+                checkCancelled();
                 if (Files.exists(entry.dest)) continue;
+                progress.onProgress("Добираю недокачанные ресурсы: " + (++tried) + " из " + left);
                 try {
                     downloadFileWithRetries(entry.url, entry.dest, MAX_RETRIES, entry.hash);
                     recovered++;
                 } catch (Exception ignored) {
                 }
+                long b = Http.DOWNLOADED.get(), now = System.currentTimeMillis();
+                if (b != lastBytes) { lastBytes = b; lastAt = now; }
+                else if (now - lastAt > STALL_LIMIT.toMillis()) break;   // связи нет — дальше без них
             }
             if (recovered > 0) {
                 System.out.println("[ASSETS] Докачано со второго прохода: " + recovered);
@@ -1144,18 +1444,18 @@ public class VersionDownloadService {
         }
         Files.createDirectories(destination.getParent() != null ? destination.getParent() : Path.of("."));
 
-        BinaryResponse response = httpGetBytes(url);
-
-        if (response.statusCode() != 200) {
-            throw new IOException("Failed to download: " + url + " (status: " + response.statusCode() + ")");
+        // Потоком на диск, с переподключением и докачкой (Http.download, 21.10.2026). Раньше файл
+        // целиком читался в память, и обрыв на 25-м мегабайте клиентского jar начинал его с нуля,
+        // а пропавший на полминуты Wi-Fi за три быстрые попытки ронял всю загрузку игры.
+        Path tmp = destination.resolveSibling(destination.getFileName() + ".dl");
+        long written = Http.download(url, tmp, Map.of(), HTTP_TIMEOUT);
+        if (written < 0) {
+            throw new IOException("Failed to download: " + url + " (сервер ответил ошибкой)");
         }
-        if (response.body().length == 0) {
+        if (written == 0) {
+            Files.deleteIfExists(tmp);
             throw new IOException("Сервер вернул пустой ответ: " + url);
         }
-
-        Path tmp = destination.resolveSibling(destination.getFileName() + ".part");
-        Files.write(tmp, response.body(), StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
 
         if (expectedSha1 != null && !expectedSha1.isBlank()) {
             String actual = sha1Of(tmp);
