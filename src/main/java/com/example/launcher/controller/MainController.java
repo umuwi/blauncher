@@ -5920,9 +5920,41 @@ public class MainController {
                 modsListPanel.getChildren().add(buildExclusiveRow(ex));
             }
         }
+        modDescLabels.clear();
         for (ModInfo mod : currentModResults) {
             modsListPanel.getChildren().add(buildModRow(mod));
         }
+        translateModDescriptions();
+    }
+
+    /** Описания текущей выдачи: подпись → английский оригинал (для перевода и подсказки с оригиналом). */
+    private final Map<Label, String> modDescLabels = new LinkedHashMap<>();
+    private final com.example.launcher.service.ModDescriptionTranslator modDescTranslator =
+            new com.example.launcher.service.ModDescriptionTranslator();
+    private int modDescGeneration;
+
+    /**
+     * Описания с Modrinth — по-английски; при русском интерфейсе подменяем их переводом (27.10.2026, просьба
+     * владельца). Строки рисуются сразу, перевод приходит следом; ответ на старую выдачу отбрасывается.
+     */
+    private void translateModDescriptions() {
+        int generation = ++modDescGeneration;
+        if (!"ru".equals(currentLanguage) || modDescLabels.isEmpty()) return;
+        Map<Label, String> snapshot = new LinkedHashMap<>(modDescLabels);
+        List<String> texts = new ArrayList<>(new java.util.LinkedHashSet<>(snapshot.values()));
+        executor.submit(() -> {
+            Map<String, String> ru = modDescTranslator.translate(texts);
+            if (ru.isEmpty()) return;
+            Platform.runLater(() -> {
+                if (generation != modDescGeneration) return;
+                snapshot.forEach((label, original) -> {
+                    String t = ru.get(original);
+                    if (t == null || t.equals(original)) return;
+                    label.setText(t);
+                    Tooltip.install(label, new Tooltip(original));
+                });
+            });
+        });
     }
 
     private Node buildModRow(ModInfo mod) {
@@ -5939,6 +5971,9 @@ public class MainController {
         sub.getStyleClass().add("server-sub");
         sub.setWrapText(true);
         textBox.getChildren().addAll(name, sub);
+        if (mod.getDescription() != null && !mod.getDescription().isBlank()) {
+            modDescLabels.put(sub, mod.getDescription());
+        }
 
         String versionRange = mod.getVersionRangeLabel();
         StringBuilder loaderList = new StringBuilder();
