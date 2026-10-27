@@ -698,6 +698,38 @@ public class ModrinthService {
         return fileName;
     }
 
+    /**
+     * Мод не с Modrinth, а по прямой ссылке — эксклюзивы BLauncher с blauncher.ru (ExclusiveModsService).
+     * Кладётся туда же, куда и моды с Modrinth (mods/&lt;сборка&gt;/), с той же проверкой sha1 и записью в
+     * .installed.json — чтобы «Моды сборки», синхронизация и «Починка» видели его как обычный мод.
+     */
+    public String downloadDirect(String url, String fileName, String expectedSha1, String profileName,
+                                 String projectId, String title, Http.Progress bytes) throws IOException {
+        Path targetDir = contentStorageDir("mod", profileName);
+        Files.createDirectories(targetDir);
+        Path dest = targetDir.resolve(fileName);
+        if (Files.exists(dest)) {
+            if (expectedSha1 == null || expectedSha1.equalsIgnoreCase(sha1Of(dest))) {
+                recordInstalledMeta("mod", profileName, fileName, projectId, title);
+                return fileName;
+            }
+            Files.deleteIfExists(dest);
+        }
+        long written = Http.download(url, dest, Map.of("User-Agent", USER_AGENT), java.time.Duration.ofMinutes(10), bytes);
+        if (written < 0) {
+            throw new IOException("Download failed: " + fileName);
+        }
+        if (expectedSha1 != null) {
+            String actual = sha1Of(dest);
+            if (!expectedSha1.equalsIgnoreCase(actual)) {
+                Files.deleteIfExists(dest);
+                throw new IOException("Файл скачался повреждённым (" + fileName + "): sha1 " + actual + " вместо " + expectedSha1);
+            }
+        }
+        recordInstalledMeta("mod", profileName, fileName, projectId, title);
+        return fileName;
+    }
+
     /** sha1 файла в нижнем регистре — в таком виде его публикует Modrinth. */
     static String sha1Of(Path file) throws IOException {
         try {

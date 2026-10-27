@@ -600,6 +600,25 @@
 .server-row.selected {    -fx-background-color: @accent-soft@;
     -fx-background-radius: 8;}
 
+/* Эксклюзив BLauncher в поиске модов (27.10.2026): вся строка в жёлтой рамке, пометка тоже жёлтая —
+   цвет один во всех темах, чтобы эксклюзив узнавался одинаково. */
+.exclusive-row {    -fx-background-color: rgba(245, 197, 24, 0.08);
+    -fx-background-radius: 8;
+    -fx-border-color: #f5c518;
+    -fx-border-width: 2;
+    -fx-border-radius: 8;
+    -fx-padding: 12 10;}
+
+.exclusive-row:hover {    -fx-background-color: rgba(245, 197, 24, 0.16);
+    -fx-background-radius: 8;}
+
+.exclusive-badge {    -fx-background-color: #f5c518;
+    -fx-text-fill: #1c1600;
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-background-radius: 5;
+    -fx-padding: 2 7;}
+
 .server-name {    -fx-font-size: 16px;
     -fx-font-family: "Inter SemiBold";
     -fx-text-fill: @text@;}
@@ -1041,7 +1060,9 @@
     -fx-text-fill: @ok@;
     -fx-wrap-text: true;}
 
-.toast-stack {    -fx-padding: 0 0 22 0;}
+/* Над кнопкой «Играть», а не поверх неё (26.10.2026): тост «Сборка создана — нажмите „Играть“»
+   закрывал собой ту самую кнопку, а новички как раз не находили, где запускать. */
+.toast-stack {    -fx-padding: 0 0 118 0;}
 
 .toast {    -fx-background-color: @surface-2@;
     -fx-border-color: @line@;

@@ -998,6 +998,8 @@ public class MainController {
     private volatile String pendingLaunchServer;
 
     private volatile boolean gameStarting = false;
+    /** Запуск пошёл со щелчка по карточке в «Сборках» — для отметки play_click card=1. */
+    private boolean launchFromCard;
     /**
      * Когда последний раз стартовал процесс игры (0 — игра закрылась). 19.10.2026 двое новичков
      * из девяти через 12-18 с после старта нажали «Играть» ещё раз: окно Minecraft после первой
@@ -4142,6 +4144,15 @@ public class MainController {
             renderBuildsGrid();
             renderCurrentBuildPanel();
             goToView("home");
+            // Щелчок по карточке на экране «Сборки» — сразу и запуск (26.10.2026). Новички
+            // e4be5752 и 507f1c5f создавали сборку, щёлкали по ней, попадали на главную, ничего не
+            // происходило — возвращались в «Сборки» и через несколько кругов уходили, так и не нажав
+            // «Играть». На главной щелчок по-прежнему только выбирает: там выбирают, что запускать.
+            if (showLikeToggle && !gameStarting && !modDoctorApplying && !gameLaunchService.isGameRunning()) {
+                launchFromCard = true;
+                onLaunch();
+                launchFromCard = false;
+            }
         });
         return card;
     }
@@ -4425,6 +4436,15 @@ public class MainController {
             stat("play_blocked", "cooldown");
             return;
         }
+        // Игра уже идёт, минута защиты прошла — переспрашиваем, а не запускаем молча вторую копию.
+        // 26.10.2026 новичок 667c33a9 не дождался окна Minecraft 26.2 (оно было за лаунчером или
+        // ещё грузилось), жал «Играть» и в итоге держал три копии игры сразу. Нарочно вторую
+        // копию запустить можно — ответом «Запустить ещё одну».
+        boolean extraCopy = gameLaunchService.isGameRunning();
+        if (extraCopy && !confirmExtraGameCopy()) {
+            stat("play_blocked", "running");
+            return;
+        }
         if (modDoctorApplying) {
             showToast("Сейчас идёт починка сборки — подождите несколько секунд", "info");
             stat("play_blocked", "doctor");
@@ -4462,7 +4482,9 @@ public class MainController {
         setPlayButtonBusy(installed ? "Запуск…" : "Скачивание · 0%");
         playClicked = true;
         pendingLaunchServer = selectedServer;
-        stat("play_click", modLoader + " " + versionId + " dl=" + (installed ? 0 : 1));
+        stat("play_click", modLoader + " " + versionId + " dl=" + (installed ? 0 : 1) + (launchFromCard ? " card=1" : "")
+                + (extraCopy ? " extra=1" : ""));
+        launchFromCard = false;
         if (!installed) {
             downloadAndLaunch(versionId, modLoader);
         } else {
@@ -4896,6 +4918,14 @@ public class MainController {
                 String hint = networkHint(ex, launchPhase);
                 if (hint == null && msg.startsWith("Не удалось подобрать сборку")) hint = msg;
                 if (hint == null && "java".equals(launchPhase)) hint = JAVA_FAIL_HINT;
+                // Нераспознанная ошибка — тоже словами, а не одной строкой «Запуск не удался» под
+                // кнопкой: 27.10.2026 ab54a7b2 нажал «Играть» около 60 раз за два часа, не видя ни
+                // одного сообщения (InvalidPathException).
+                if (hint == null) {
+                    String shortMsg = msg.length() > 220 ? msg.substring(0, 220) + "…" : msg;
+                    hint = "Не удалось запустить игру" + (shortMsg.isBlank() ? "" : ": " + shortMsg)
+                            + ". Подробности — в журнале ниже";
+                }
                 String toast = hint;
                 Platform.runLater(() -> {
                     log("[ERROR] Запуск не удался: " + ex.getMessage());
@@ -4903,6 +4933,7 @@ public class MainController {
                     if (toast != null) {
                         log("[LAUNCH] " + toast);
                         showToast(toast, "error");
+                        if (!gameConsoleBody.isVisible()) onToggleGameConsole();
                     }
                 });
                 finishLaunchAttempt();
@@ -4988,7 +5019,7 @@ public class MainController {
 
     /** После этих причин вылета виноваты, скорее всего, моды — есть смысл их проверить. */
     private static final java.util.Set<String> MOD_CRASH_REASONS =
-            java.util.Set.of("mods", "mods_dup", "files", "crash_report", "game_crash", "unknown", "corrupt");
+            java.util.Set.of("mods", "mods_dup", "files", "crash_report", "game_crash", "unknown", "corrupt", "config");
 
     private static boolean isModdedLoader(String loader) {
         if (loader == null) return false;
@@ -5018,7 +5049,7 @@ public class MainController {
     }
 
     private void runModDoctor(Profile build, String crashLog, boolean afterCrash) {
-        if (modDoctor == null) modDoctor = new ModDoctor(modrinthService);
+        if (modDoctor == null) modDoctor = new ModDoctor(modrinthService, gameDir);
         String loader = build.getModLoader().toLowerCase(java.util.Locale.ROOT);
         executor.submit(() -> {
             List<ModDoctor.Fix> plan;
@@ -5080,12 +5111,14 @@ public class MainController {
                 case REPLACE -> "Заменить";
                 case DISABLE -> "Выключить";
                 case ENABLE -> "Включить";
+                case RESET_CONFIG -> "Пересоздать настройки";
             };
             Label reason = new Label(fix.reason);
             reason.getStyleClass().add("toggle-sub");
             reason.setWrapText(true);
             VBox row = new VBox(2);
-            boolean doable = fix.kind == ModDoctor.Kind.DISABLE || fix.kind == ModDoctor.Kind.ENABLE || fix.versionId != null;
+            boolean doable = fix.kind == ModDoctor.Kind.DISABLE || fix.kind == ModDoctor.Kind.ENABLE
+                    || fix.kind == ModDoctor.Kind.RESET_CONFIG || fix.versionId != null;
             if (doable) {
                 CheckBox box = new CheckBox(action + ": " + fix.title);
                 box.setSelected(fix.selected);
@@ -5231,6 +5264,8 @@ public class MainController {
             case "corrupt" -> "Часть файлов игры или мод скачались повреждёнными — удалите недавно добавленный мод "
                     + "или нажмите «Играть» ещё раз, лаунчер перепроверит файлы";
             case "files" -> "Игре не хватает файлов — проверьте моды на совместимость с версией и нажмите «Играть» ещё раз";
+            case "config" -> "Испорчен файл настроек мода (.toml) — так бывает после нехватки места на диске "
+                    + "или выключения компьютера во время игры. «Починка сборки» уберёт его, мод создаст новый";
             case "access" -> "Нет доступа к файлам игры — возможно, их держит антивирус или вторая копия игры. "
                     + "Закройте лишнее и попробуйте снова";
             case "crash_report" -> "Игра упала с отчётом об ошибке — чаще всего из-за мода. Подробности в журнале игры";
@@ -5435,6 +5470,12 @@ public class MainController {
         if (log.contains("AccessDeniedException") || log.contains("Access is denied") || log.contains("Отказано в доступе")) {
             return "access";
         }
+        // 27.10.2026: Forge 1.20.1 у 32177f1e падал через 2 с с «why=unknown exc=ParsingException» —
+        // это night-config не прочитал .toml с настройками (пустой после нехватки места на диске).
+        if (log.contains("nightconfig") && log.contains("ParsingException") || log.contains("Failed loading config file")
+                || log.contains("Failed to load FML config")) {
+            return "config";
+        }
         // Падение самой Java: hs_err печатает «A fatal error has been detected» и проблемный модуль.
         // Модуль драйвера видеокарты в нём — почти всегда драйвер, а не игра и не моды.
         boolean fatal = log.contains("A fatal error has been detected by the Java Runtime Environment");
@@ -5617,6 +5658,24 @@ public class MainController {
         return closeIt;
     }
 
+    /** «Minecraft уже запущен — запустить ещё одну копию?» (см. onLaunch). true — запускать. */
+    private boolean confirmExtraGameCopy() {
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION);
+        ask.initOwner(primaryStage);
+        ask.setTitle("BLauncher");
+        ask.setHeaderText("Minecraft уже запущен");
+        ask.setContentText("Окно игры может быть за лаунчером или свёрнуто — посмотрите на панели задач.\n\n"
+                + "Вторая копия игры займёт ещё столько же памяти — запускайте её, только если она правда нужна.");
+        ButtonType no = new ButtonType("Не запускать", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType yes = new ButtonType("Запустить ещё одну", ButtonBar.ButtonData.OTHER);
+        ask.getButtonTypes().setAll(yes, no);
+        Button noBtn = (Button) ask.getDialogPane().lookupButton(no);
+        Button yesBtn = (Button) ask.getDialogPane().lookupButton(yes);
+        if (yesBtn != null) yesBtn.setDefaultButton(false);
+        if (noBtn != null) noBtn.setDefaultButton(true);
+        return ask.showAndWait().orElse(no) == yes;
+    }
+
     private void updateLaunchStage(String raw) {
         String msg = raw == null ? "" : raw.trim();
         String label = msg.replaceFirst("^\\[[A-Z]+\\]\\s*", "");
@@ -5762,6 +5821,10 @@ public class MainController {
     // ============================================================
 
     private final List<ModInfo> currentModResults = new ArrayList<>();
+    /** Эксклюзивы BLauncher над результатами Modrinth (27.10.2026: порт Create на 26.3). */
+    private final com.example.launcher.service.ExclusiveModsService exclusiveModsService =
+            new com.example.launcher.service.ExclusiveModsService();
+    private final List<com.example.launcher.service.ExclusiveModsService.ExclusiveMod> currentExclusives = new ArrayList<>();
     private String activeContentType = "mod";
     /** Fires onSearch() a beat after the user stops typing, so a search fires per letter without
      *  flooding Modrinth with one request per keystroke while typing fast. */
@@ -5809,7 +5872,15 @@ public class MainController {
         executor.submit(() -> {
             try {
                 List<ModInfo> results = modrinthService.search(query, mcVersion, loaderFilter, type, 50);
+                List<com.example.launcher.service.ExclusiveModsService.ExclusiveMod> exclusives = new ArrayList<>();
+                if ("mod".equals(type)) {
+                    for (var ex : exclusiveModsService.list()) {
+                        if (ex.matches(query, mcVersion, loaderFilter)) exclusives.add(ex);
+                    }
+                }
                 Platform.runLater(() -> {
+                    currentExclusives.clear();
+                    currentExclusives.addAll(exclusives);
                     currentModResults.clear();
                     currentModResults.addAll(results);
                     renderModResults();
@@ -5844,6 +5915,11 @@ public class MainController {
 
     private void renderModResults() {
         modsListPanel.getChildren().clear();
+        if ("mod".equals(activeContentType)) {
+            for (var ex : currentExclusives) {
+                modsListPanel.getChildren().add(buildExclusiveRow(ex));
+            }
+        }
         for (ModInfo mod : currentModResults) {
             modsListPanel.getChildren().add(buildModRow(mod));
         }
@@ -5900,6 +5976,123 @@ public class MainController {
 
         row.getChildren().addAll(icon, textBox, addBtn);
         return row;
+    }
+
+    /**
+     * Карточка эксклюзива BLauncher: та же строка, что у мода с Modrinth, но в жёлтой рамке и с жёлтой
+     * пометкой «ЭКСКЛЮЗИВ» (27.10.2026, просьба владельца — порт Create на 26.3 должен быть заметен в поиске).
+     */
+    private Node buildExclusiveRow(com.example.launcher.service.ExclusiveModsService.ExclusiveMod ex) {
+        HBox row = new HBox(12);
+        row.getStyleClass().addAll("server-row", "exclusive-row");
+        row.setAlignment(Pos.CENTER_LEFT);
+
+        Region placeholder = new Region();
+        placeholder.getStyleClass().add("build-icon-sm");
+        StackPane icon = new StackPane(placeholder);
+        if (ex.icon != null && !ex.icon.isBlank()) {
+            iconExecutor.submit(() -> {
+                Image img = com.example.launcher.ui.IconLoader.load(ex.icon);
+                if (img != null) {
+                    Platform.runLater(() -> {
+                        ImageView iv = new ImageView(img);
+                        iv.setFitWidth(32);
+                        iv.setFitHeight(32);
+                        iv.setPreserveRatio(true);
+                        icon.getChildren().setAll(iv);
+                    });
+                }
+            });
+        }
+
+        Label name = new Label(ex.title);
+        name.getStyleClass().add("server-name");
+        Label badge = new Label(ex.badge == null || ex.badge.isBlank() ? "ЭКСКЛЮЗИВ" : ex.badge);
+        badge.getStyleClass().add("exclusive-badge");
+        HBox titleRow = new HBox(8, name, badge);
+        titleRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox textBox = new VBox(2, titleRow);
+        if (ex.description != null && !ex.description.isBlank()) {
+            Label sub = new Label(ex.description);
+            sub.getStyleClass().add("server-sub");
+            sub.setWrapText(true);
+            textBox.getChildren().add(sub);
+        }
+        String targets = ex.targetsLabel();
+        if (!targets.isBlank()) {
+            Label meta = new Label(targets);
+            meta.getStyleClass().addAll("role-badge", "mono");
+            HBox metaRow = new HBox(meta);
+            metaRow.setAlignment(Pos.CENTER_LEFT);
+            textBox.getChildren().add(metaRow);
+        }
+        HBox.setHgrow(textBox, Priority.ALWAYS);
+
+        Button addBtn = new Button("+");
+        addBtn.getStyleClass().add("secondary-button");
+        addBtn.setOnAction(e -> showExclusiveTargetMenu(ex, addBtn));
+
+        row.getChildren().addAll(icon, textBox, addBtn);
+        return row;
+    }
+
+    /** Выбор сборки для эксклюзива: ставится только туда, где совпадают версия игры и загрузчик. */
+    private void showExclusiveTargetMenu(com.example.launcher.service.ExclusiveModsService.ExclusiveMod ex, Button sourceButton) {
+        ContextMenu menu = new ContextMenu();
+        for (Profile build : builds) {
+            if (build.isVanillaEntry()) continue;
+            var file = ex.fileFor(build.getModLoader(), build.getVersionId());
+            MenuItem item = new MenuItem(build.getName() + (file == null ? "  (не подходит)" : ""));
+            if (file == null) {
+                item.setDisable(true);
+            } else {
+                item.setOnAction(e -> installExclusiveIntoBuild(ex, file, build, sourceButton));
+            }
+            menu.getItems().add(item);
+        }
+        if (!menu.getItems().isEmpty()) {
+            menu.getItems().add(new SeparatorMenuItem());
+        }
+        MenuItem createNew = new MenuItem("+ Новая сборка...");
+        createNew.setOnAction(e -> {
+            showToast("Для «" + ex.title + "» нужна сборка " + ex.targetsLabel() + " — создайте её, затем нажмите «+» ещё раз", "info");
+            onOpenCreateBuild();
+        });
+        menu.getItems().add(createNew);
+        menu.show(sourceButton, javafx.geometry.Side.BOTTOM, 0, 0);
+    }
+
+    private void installExclusiveIntoBuild(com.example.launcher.service.ExclusiveModsService.ExclusiveMod ex,
+                                           com.example.launcher.service.ExclusiveModsService.ExclusiveFile file,
+                                           Profile build, Button sourceButton) {
+        if (sourceButton != null) sourceButton.setDisable(true);
+        FxProgress progress = showRowProgress(sourceButton);
+        executor.submit(() -> {
+            try {
+                modrinthService.downloadDirect(file.url, file.fileName, file.sha1, build.getName(),
+                        "bl:" + ex.id, ex.title, progress == null ? null : progress.part(0, 1));
+                stat("exclusive_add", "ok id=" + ex.id + " loader=" + file.loader + " mc=" + file.mcVersion);
+                Platform.runLater(() -> {
+                    hideRowProgress(sourceButton, false);
+                    log("[MODS] Установлено в «" + build.getName() + "»: " + ex.title);
+                    showToast("«" + ex.title + "» установлен в «" + build.getName() + "»", "success");
+                    if (sourceButton != null) {
+                        FontIcon done = new FontIcon("fth-check");
+                        done.getStyleClass().add("installed-check");
+                        sourceButton.setText("");
+                        sourceButton.setGraphic(done);
+                    }
+                });
+            } catch (Exception e) {
+                stat("exclusive_add", "fail id=" + ex.id + " exc=" + e.getClass().getSimpleName());
+                Platform.runLater(() -> {
+                    log("[ERROR] Не удалось установить " + ex.title + ": " + e.getMessage());
+                    hideRowProgress(sourceButton, true);
+                    showToast("Не удалось скачать «" + ex.title + "» — проверьте интернет и попробуйте ещё раз", "error");
+                });
+            }
+        });
     }
 
     /** Search-result row icon: Modrinth returns an {@code icon_url} for basically every project
@@ -6763,6 +6956,7 @@ public class MainController {
         profile.setModLoaderVersion(supported ? info.loaderVersion : null);
         profile.setIconText(buildName.substring(0, Math.min(2, buildName.length())).toUpperCase());
         profile.setIconGradient(randomCardGradient());
+        profile.setLiked(true);   // видна на главной, см. onConfirmCreateBuild
         builds.add(profile);
         try {
             profileService.saveProfile(profile);
@@ -11261,10 +11455,66 @@ public class MainController {
         for (String l : List.of("fabric", "neoforge", "forge")) {
             if (loaders.contains(l) && buildLoaderCombo.getItems().contains(l)) {
                 buildLoaderCombo.getSelectionModel().select(l);
-                return;
+                break;
             }
         }
         // Мод только под Quilt: ближе всего Fabric, Quilt-моды обычно запускаются и на нём.
+        refinePreselectFromVersions(mod);
+    }
+
+    /**
+     * Уточняет выбор preselectBuildForMod по настоящему списку файлов мода. Из поиска приходят
+     * версии игры и загрузчики мода ВПЕРЕМЕШКУ: «есть 1.21.4» и «есть NeoForge» не значит, что есть
+     * NeoForge под 1.21.4. 26.10.2026 новичок 9527a74f создал сборку под мод с NeoForge 1.21.4, и мод
+     * в неё не встал ни с первой попытки, ни с двух следующих. Здесь ищем самую новую версию игры
+     * из списка окна, для которой файл под Fabric / NeoForge / Forge действительно есть. Если
+     * человек за это время уже сам поменял выбор — не трогаем.
+     */
+    private void refinePreselectFromVersions(ModInfo mod) {
+        String shownVersion = buildVersionCombo.getSelectionModel().getSelectedItem();
+        String shownLoader = buildLoaderCombo.getSelectionModel().getSelectedItem();
+        List<String> gameVersions = new ArrayList<>(buildVersionCombo.getItems());
+        List<String> loaders = new ArrayList<>(buildLoaderCombo.getItems());
+        executor.submit(() -> {
+            Map<String, java.util.Set<String>> loadersByGame = new HashMap<>();
+            try {
+                for (var el : modrinthService.listVersions(mod.getProjectId(), null, null)) {
+                    var v = el.getAsJsonObject();
+                    if (!v.has("game_versions") || !v.has("loaders")) continue;
+                    for (var gv : v.getAsJsonArray("game_versions")) {
+                        var set = loadersByGame.computeIfAbsent(gv.getAsString(), k -> new java.util.HashSet<>());
+                        for (var l : v.getAsJsonArray("loaders")) set.add(l.getAsString());
+                    }
+                }
+            } catch (Exception e) {
+                return;   // нет сети — остаётся выбор по данным поиска
+            }
+            String bestVersion = null, bestLoader = null;
+            search:
+            for (String gv : gameVersions) {
+                java.util.Set<String> have = loadersByGame.get(gv);
+                if (have == null) continue;
+                if (have.contains("quilt")) have.add("fabric");
+                for (String l : List.of("fabric", "neoforge", "forge")) {
+                    if (have.contains(l) && loaders.contains(l)) {
+                        bestVersion = gv;
+                        bestLoader = l;
+                        break search;
+                    }
+                }
+            }
+            if (bestVersion == null) return;
+            String v = bestVersion, l = bestLoader;
+            Platform.runLater(() -> {
+                if (pendingModForNewBuild != mod || editingBuild != null || !createBuildOverlay.isVisible()) return;
+                if (!java.util.Objects.equals(buildVersionCombo.getSelectionModel().getSelectedItem(), shownVersion)
+                        || !java.util.Objects.equals(buildLoaderCombo.getSelectionModel().getSelectedItem(), shownLoader)) return;
+                if (v.equals(shownVersion) && l.equals(shownLoader)) return;
+                buildVersionCombo.getSelectionModel().select(v);
+                buildLoaderCombo.getSelectionModel().select(l);
+                log("[BUILDS] Под «" + mod.getTitle() + "» выбрано " + l + " " + v + " — для неё у мода есть файл");
+            });
+        });
     }
 
     @FXML
@@ -11313,6 +11563,10 @@ public class MainController {
         stat("build_created", loader + " " + version + (pendingModForNewBuild != null ? " from=mod" : ""));
         profile.setIconText(name.substring(0, Math.min(2, name.length())).toUpperCase());
         profile.setIconGradient(randomCardGradient());
+        // Сразу с сердечком (26.10.2026): на главной полоса показывает только отмеченные сборки, и
+        // новичок, которого после создания переносит на главную, своей сборки там не видел — только
+        // «Без модов и сборок». Так же для модпаков и сборок, импортированных по коду.
+        profile.setLiked(true);
         builds.add(profile);
         try {
             profileService.saveProfile(profile);
@@ -11537,6 +11791,7 @@ public class MainController {
         // создавалась, в лог не писалось ничего. Со стороны человека кнопка просто не работала.
         profile.setIconText(name.substring(0, Math.min(2, name.length())).toUpperCase());
         profile.setIconGradient(randomCardGradient());
+        profile.setLiked(true);   // видна на главной, см. onConfirmCreateBuild
         builds.add(profile);
         try {
             profileService.saveProfile(profile);
@@ -12412,6 +12667,14 @@ public class MainController {
      */
     private static final Path UPDATE_PENDING = Path.of("config", "update-pending.txt");
     private static final Path UPDATE_FAILED = Path.of("config", "update-failed.txt");
+    /** Куда молча скачивается обновление (stageUpdateSilently); переживает перезапуск без закрытия. */
+    private static final Path UPDATE_STAGED_DIR = Path.of("config", "update-staged");
+
+    /** Скачанное и проверенное обновление — ставится при закрытии (applyStagedUpdateOnExit). */
+    private volatile Path stagedUpdate;
+    private volatile String stagedUpdateVersion;
+    /** Прошлое тихое обновление не встало — в этот раз спрашиваем окном, как раньше. */
+    private volatile boolean silentUpdateFailed;
 
     /** Чем кончилось обновление, начатое прошлым запуском: update_ok / update_fail + подсказка. */
     private void reportPreviousUpdate() {
@@ -12432,11 +12695,14 @@ public class MainController {
         // Метка недельной давности ни о чём уже не говорит (лаунчер могли переставить руками).
         if (System.currentTimeMillis() - at > 7L * 24 * 3600 * 1000) return;
         String from = p[0], to = p[1];
+        boolean silent = p.length > 3 && p[3].equals("silent");
+        String tag = silent ? " silent=1" : "";
         if (!updateService.isNewer(to, LAUNCHER_VERSION)) {
-            stat("update_ok", from + "-" + to);
+            stat("update_ok", from + "-" + to + tag);
             return;
         }
-        stat("update_fail", from + "-" + to + " reason=" + (scriptFailed ? "locked" : "no_restart"));
+        stat("update_fail", from + "-" + to + " reason=" + (scriptFailed ? "locked" : "no_restart") + tag);
+        if (silent) silentUpdateFailed = true;
         Platform.runLater(() -> showToast("Обновление до " + to + " не установилось: Windows не дала заменить файл "
                 + "лаунчера — чаще всего его держит антивирус. Перезагрузите компьютер и нажмите «Обновить» ещё раз "
                 + "или скачайте установщик с blauncher.ru и поставьте поверх.", "warning"));
@@ -12453,8 +12719,65 @@ public class MainController {
                 return; // already up to date
             }
             pendingUpdateManifest = manifest;
+            if (!manifest.notify && !silentUpdateFailed && stageUpdateSilently(manifest)) return;
             Platform.runLater(this::showUpdateModal);
         });
+    }
+
+    /**
+     * Тихое обновление. 26.10.2026 за сутки окно обновления показали 20 раз, «Позже» нажали 18:
+     * человек открыл лаунчер поиграть, а не обновляться, и исправления до него не доходили — 12 из
+     * 25 лаунчеров сидели на 1.14.25 при вышедшей 1.14.29. Теперь jar качается в фоне, проверяется
+     * по sha256 и ставится, когда лаунчер закрывают; окно — только при "notify": true в манифесте
+     * или если прошлое тихое обновление не встало. Только app-image: у BLauncher.bat своя схема.
+     *
+     * @return false — не вышло (не app-image, нет сети); тогда показываем окно, как раньше
+     */
+    private boolean stageUpdateSilently(UpdateService.UpdateManifest manifest) {
+        if (!UpdateService.isAppImageInstall(resolveCurrentExecutablePath())) return false;
+        String url = manifest.downloadUrlExe, sha = manifest.sha256Exe;
+        if (url == null || url.isBlank() || sha == null || sha.isBlank()) return false;
+        try {
+            Path dir = UPDATE_STAGED_DIR.toAbsolutePath();
+            Path target = dir.resolve("BLauncher-" + manifest.latestVersion + ".jar");
+            // Уже скачано прошлым запуском (лаунчер перезапускали сменой языка, а не закрытием).
+            boolean ready = Files.isRegularFile(target) && sha.trim().equalsIgnoreCase(updateService.sha256Hex(target));
+            if (!ready) {
+                Path downloaded = updateService.downloadAndVerify(url, sha, null);
+                Files.createDirectories(dir);
+                try (var old = Files.list(dir)) {   // прошлые версии не копим
+                    old.forEach(f -> { try { Files.deleteIfExists(f); } catch (Exception ignored) { } });
+                }
+                Files.move(downloaded, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                try { Files.deleteIfExists(downloaded.getParent()); } catch (Exception ignored) { }
+            }
+            stagedUpdate = target;
+            stagedUpdateVersion = manifest.latestVersion;
+            log("[UPDATE] Скачано обновление " + manifest.latestVersion + " — установится при закрытии лаунчера");
+            stat("update_offer", LAUNCHER_VERSION + "-" + manifest.latestVersion + " silent=1");
+            return true;
+        } catch (Exception e) {
+            stat("update_fail", LAUNCHER_VERSION + "-" + manifest.latestVersion
+                    + " reason=dl_" + e.getClass().getSimpleName() + " silent=1");
+            return false;
+        }
+    }
+
+    /** Из MainApp при закрытии окна, последним шагом перед System.exit: ставит молча скачанное
+     *  обновление (stageUpdateSilently). Лаунчер после замены не перезапускается. */
+    public void applyStagedUpdateOnExit() {
+        Path staged = stagedUpdate;
+        String to = stagedUpdateVersion;
+        if (staged == null || to == null || !Files.isRegularFile(staged)) return;
+        try {
+            // Итог проверит и отправит в статистику следующий запуск (reportPreviousUpdate).
+            Files.createDirectories(UPDATE_PENDING.getParent());
+            Files.deleteIfExists(UPDATE_FAILED);
+            Files.writeString(UPDATE_PENDING, LAUNCHER_VERSION + " " + to + " " + System.currentTimeMillis() + " silent");
+            updateService.applyUpdateOnExit(staged, resolveCurrentExecutablePath(), UPDATE_FAILED);
+        } catch (Exception e) {
+            try { Files.deleteIfExists(UPDATE_PENDING); } catch (Exception ignored) { }
+        }
     }
 
     private void showUpdateModal() {
@@ -12685,7 +13008,29 @@ public class MainController {
         // Что подвело при установке Java — по источникам (JavaDownloadService.lastFailTag).
         String java = "java".equals(launchPhase) && javaDownloadService != null
                 && !javaDownloadService.lastFailTag().isEmpty() ? " jv=" + javaDownloadService.lastFailTag() : "";
-        return ex.getClass().getSimpleName() + phase + (tag.isEmpty() ? "" : " " + tag) + cause + java;
+        return ex.getClass().getSimpleName() + phase + (tag.isEmpty() ? "" : " " + tag) + cause + java
+                + (tag.isEmpty() ? failWhere(root) : "");
+    }
+
+    /**
+     * Где в нашем коде случился сбой («at=GameLaunchService.syncMods:1597») и, для неверного пути,
+     * код недопустимого знака («char=58» — двоеточие). 27.10.2026 ab54a7b2 около 60 раз подряд
+     * получил «InvalidPathException phase=start», и понять по отметке, какой путь сломан, было
+     * нельзя. Только имена классов и номер знака — без самого пути (в нём имя пользователя Windows).
+     */
+    static String failWhere(Throwable root) {
+        String out = "";
+        if (root instanceof java.nio.file.InvalidPathException ipe && ipe.getReason() != null) {
+            java.util.regex.Matcher ch = java.util.regex.Pattern.compile("<(.)>").matcher(ipe.getReason());
+            if (ch.find()) out += " char=" + (int) ch.group(1).charAt(0);
+        }
+        for (StackTraceElement f : root.getStackTrace()) {
+            if (!f.getClassName().startsWith("com.example.launcher.")) continue;
+            String cls = f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1);
+            out += " at=" + (cls + "." + f.getMethodName()).replaceAll("[^A-Za-z0-9_.]", "_") + ":" + f.getLineNumber();
+            break;
+        }
+        return out;
     }
 
     /**
@@ -12808,6 +13153,7 @@ public class MainController {
      *  OS process, so exiting this JVM does NOT kill it on Windows without this. */
     public void shutdownBackgroundProcesses() {
         com.example.launcher.ui.DesktopNotifier.dispose();   // иначе значок в трее висит до наведения мыши
+        ModLoaderService.stopRunningInstaller();   // отдельный процесс Java — сам с лаунчером не умрёт
         try {
             if (ztPoller != null) {
                 ztPoller.stop();

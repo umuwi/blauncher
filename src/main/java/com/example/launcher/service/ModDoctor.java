@@ -35,8 +35,9 @@ import java.util.zip.ZipInputStream;
  */
 public class ModDoctor {
 
-    /** ENABLE — вернуть ранее выключенный файл (снять .disabled); file — путь к .jar.disabled. */
-    public enum Kind { INSTALL, REPLACE, DISABLE, ENABLE }
+    /** ENABLE — вернуть ранее выключенный файл (снять .disabled); file — путь к .jar.disabled.
+     *  RESET_CONFIG — убрать испорченный файл настроек (file) в .broken: мод создаст его заново. */
+    public enum Kind { INSTALL, REPLACE, DISABLE, ENABLE, RESET_CONFIG }
 
     /** Одно действие плана. selected — стоит ли галочка по умолчанию (уверены ли мы). */
     public static class Fix {
@@ -121,12 +122,48 @@ public class ModDoctor {
             Map.entry("ponder", "ponder"),
             Map.entry("sophisticatedcore", "sophisticated-core"));
 
+    /**
+     * Пакет класса → slug на Modrinth: чей код искала игра в «NoClassDefFoundError». 27.10.2026
+     * f5f2a6bc (Forge 1.12.2) трижды подряд падал без zone.rong.mixinbooter — нужный мод требовал
+     * MixinBooter, но на 1.12.2 зависимости в jar не пишут (mcmod.info), и «Починка» ничего не находила.
+     */
+    private static final Map<String, String> CLASS_OWNERS = Map.ofEntries(
+            Map.entry("zone.rong.mixinbooter", "mixinbooter"),
+            Map.entry("com.cleanroommc.configanytime", "configanytime"),
+            Map.entry("software.bernie.geckolib", "geckolib"),
+            Map.entry("dev.architectury", "architectury-api"),
+            Map.entry("me.shedaniel.architectury", "architectury-api"),
+            Map.entry("me.shedaniel.clothconfig2", "cloth-config"),
+            Map.entry("me.shedaniel.autoconfig", "cloth-config"),
+            Map.entry("top.theillusivec4.curios", "curios"),
+            Map.entry("dev.isxander.yacl3", "yacl"),
+            Map.entry("io.wispforest.owo", "owo-lib"),
+            Map.entry("fuzs.puzzleslib", "puzzles-lib"),
+            Map.entry("fuzs.forgeconfigapiport", "forge-config-api-port"),
+            Map.entry("net.blay09.mods.balm", "balm"),
+            Map.entry("com.teamresourceful.resourcefullib", "resourceful-lib"),
+            Map.entry("vazkii.patchouli", "patchouli"),
+            Map.entry("mezz.jei", "jei"),
+            Map.entry("thedarkcolour.kotlinforforge", "kotlin-for-forge"),
+            Map.entry("net.fabricmc.fabric", "fabric-api"),
+            Map.entry("com.github.alexthe666.citadel", "citadel"),
+            Map.entry("dev.ftb.mods.ftblibrary", "ftb-library-forge"),
+            Map.entry("net.mehvahdjukaar.moonlight", "moonlight"),
+            Map.entry("com.supermartijn642.core", "supermartijn642s-core-lib"));
+
     public interface Log { void line(String msg); }
 
     private final ModrinthService modrinth;
+    /** Папка игры (launcher_root): там config/ с настройками модов. null — настройки не проверяем. */
+    private final Path gameDir;
 
     public ModDoctor(ModrinthService modrinth) {
+        this(modrinth, null);
+    }
+
+    public ModDoctor(ModrinthService modrinth, Path gameDir) {
         this.modrinth = modrinth;
+        this.gameDir = gameDir;
     }
 
     // ---------------------------------------------------------------
@@ -265,6 +302,16 @@ public class ModDoctor {
             m = SUSPECTED.matcher(crashLog);
             while (m.find()) suspectIds.add(m.group(1).toLowerCase(Locale.ROOT));
             suspectIds.removeAll(BUILTIN);
+            // Чьего кода не хватило игре: пакет класса → библиотека, которой в сборке нет.
+            m = MISSING_CLASS.matcher(crashLog);
+            while (m.find()) {
+                Map.Entry<String, String> owner = classOwner(m.group(1).replace('/', '.'), mcVersion);
+                if (owner == null) continue;
+                String slug = owner.getValue();
+                if (missingIds.containsKey(slug) || present.contains(slug) || presentNorm.contains(norm(slug))
+                        || jarNamed(active, slug)) continue;
+                missingIds.put(slug, "модов сборки: игре не хватило его кода (" + owner.getKey() + ")");
+            }
         }
 
         // 5. Modrinth: зависимости, которые автор указал на сайте, и версия игры у каждого мода.
@@ -402,7 +449,8 @@ public class ModDoctor {
         Set<String> coming = new HashSet<>();
         for (Fix f : installs.values()) coming.add(norm(f.title));
         out.removeIf(f -> f.kind == Kind.INSTALL && f.projectId == null && coming.contains(norm(f.title)));
-        List<Fix> plan = new ArrayList<>(installs.values());
+        List<Fix> plan = brokenConfigs(crashLog);
+        plan.addAll(installs.values());
         plan.addAll(exact);
         plan.addAll(out);
         plan.addAll(disables.values());
@@ -623,6 +671,13 @@ public class ModDoctor {
                         if (Files.exists(f.file) && !Files.exists(target)) Files.move(f.file, target);
                         log.line("[FIX] Включён обратно " + target.getFileName());
                     }
+                    case RESET_CONFIG -> {
+                        if (!Files.exists(f.file)) continue;
+                        Path aside = f.file.resolveSibling(f.file.getFileName() + ".broken");
+                        for (int i = 2; Files.exists(aside); i++) aside = f.file.resolveSibling(f.file.getFileName() + ".broken" + i);
+                        Files.move(f.file, aside);
+                        log.line("[FIX] Убран испорченный " + f.title + " (копия — " + aside.getFileName() + ")");
+                    }
                 }
             } catch (Exception e) {
                 failed.add(f.title + ": " + e.getMessage());
@@ -681,6 +736,94 @@ public class ModDoctor {
     // NeoForge/Fabric crash report: «Suspected Mods: Create (create), Version: 6.0.4»
     static final Pattern SUSPECTED = Pattern.compile(
             "Suspected Mods?:\\s*[^\\n(]*\\(([a-z0-9_\\-]+)\\)");
+    // «java.lang.NoClassDefFoundError: zone/rong/mixinbooter/ILateMixinLoader»
+    static final Pattern MISSING_CLASS = Pattern.compile(
+            "(?:NoClassDefFoundError|ClassNotFoundException):? ([A-Za-z0-9_$/.]+)");
+
+    /** Пакет → slug библиотеки, чей это код; не знаем — null. */
+    static Map.Entry<String, String> classOwner(String className, String mc) {
+        for (Map.Entry<String, String> e : CLASS_OWNERS.entrySet()) {
+            if (className.startsWith(e.getKey() + ".")) return e;
+        }
+        // Mixin в Forge до 1.13 не встроен: его приносит MixinBooter (25.10.2026 двое на 1.12.2
+        // падали с «cls=org.spongepowered.asm»). На новых версиях он часть загрузчика.
+        if (className.startsWith("org.spongepowered.asm.") && mc != null && compareVersions(mc, "1.13") < 0) {
+            return Map.entry("org.spongepowered.asm", "mixinbooter");
+        }
+        return null;
+    }
+
+    /** Есть ли мод с таким именем файла: у модов 1.12.2 (mcmod.info) id из jar мы не читаем. */
+    private static boolean jarNamed(List<JarMeta> jars, String slug) {
+        String want = norm(slug);
+        for (JarMeta j : jars) if (norm(j.file.getFileName().toString()).contains(want)) return true;
+        return false;
+    }
+
+    // ---------------------------------------------------------------
+    // Испорченные файлы настроек
+    // ---------------------------------------------------------------
+
+    // «Failed loading config file create-client.toml of type CLIENT for modid create»,
+    // «Failed to load FML config from C:\…\config\fml.toml»
+    private static final Pattern TOML_NAME = Pattern.compile("([A-Za-z0-9_\\-.]+\\.toml)\\b");
+    private static final List<String> CONFIG_ERRORS = List.of("ParsingException", "Failed loading config file",
+            "Failed to load FML config");
+
+    /**
+     * Файлы настроек .toml, на которых упала игра. 27.10.2026 у 32177f1e Forge 1.20.1 семь раз подряд
+     * падал через 2 секунды с ParsingException; накануне у него кончалось место на диске, и файл
+     * настроек записался пустым. Forge такой файл не пересоздаёт, а сам игрок о нём не знает.
+     * Берём файлы, названные рядом с ошибкой, и любые пустые или забитые нулями .toml.
+     */
+    List<Fix> brokenConfigs(String crashLog) {
+        List<Fix> out = new ArrayList<>();
+        if (gameDir == null || crashLog == null || CONFIG_ERRORS.stream().noneMatch(crashLog::contains)) return out;
+        Set<String> named = new HashSet<>();
+        for (String key : CONFIG_ERRORS) {
+            int seen = 0;
+            for (int i = crashLog.indexOf(key); i >= 0 && seen < 20; i = crashLog.indexOf(key, i + 1), seen++) {
+                Matcher m = TOML_NAME.matcher(crashLog.substring(Math.max(0, i - 600), Math.min(crashLog.length(), i + 600)));
+                while (m.find()) named.add(m.group(1).toLowerCase(Locale.ROOT));
+            }
+        }
+        named.remove("mods.toml");            // это описание мода внутри jar, а не настройки
+        named.remove("neoforge.mods.toml");
+        List<Path> roots = List.of(gameDir.resolve("config"), gameDir.resolve("defaultconfigs"), gameDir.resolve("saves"));
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            try (var walk = Files.walk(root, 3)) {
+                for (Path f : (Iterable<Path>) walk::iterator) {
+                    String name = f.getFileName().toString().toLowerCase(Locale.ROOT);
+                    if (!name.endsWith(".toml") || !Files.isRegularFile(f)) continue;
+                    boolean broken = isBrokenToml(f);
+                    // В мирах одноимённые настройки лежат в каждом мире — там только явно испорченные.
+                    if (!broken && (!named.contains(name) || root.endsWith("saves"))) continue;
+                    out.add(new Fix(Kind.RESET_CONFIG, gameDir.relativize(f).toString().replace('\\', '/'),
+                            broken ? "файл настроек испорчен (пустой или забит нулями) — мод создаст его заново"
+                                   : "игра не смогла прочитать этот файл настроек — мод создаст его заново, старый останется рядом с припиской .broken",
+                            f, null, null, true));
+                    if (out.size() >= 10) return out;
+                }
+            } catch (IOException ignored) { }
+        }
+        return out;
+    }
+
+    /** Пустой, из одних пробелов или с нулевыми байтами (так выглядит файл, недописанный при полном диске). */
+    static boolean isBrokenToml(Path f) {
+        try (InputStream in = Files.newInputStream(f)) {
+            byte[] head = in.readNBytes(64 * 1024);
+            boolean blank = true;
+            for (byte b : head) {
+                if (b == 0) return true;
+                if (b != ' ' && b != '\t' && b != '\r' && b != '\n') blank = false;
+            }
+            return blank;
+        } catch (IOException e) {
+            return false;
+        }
+    }
 
     // ---------------------------------------------------------------
     // Чтение jar

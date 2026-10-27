@@ -1111,6 +1111,9 @@ public class GameLaunchService {
         command.add("-Dfile.encoding=UTF-8");
         command.add("-Duser.country=US");
         command.add("-Duser.language=en");
+        // Порт Create на 26.3 (27.10.2026) показывает в главном меню плашку «порт от BLauncher» —
+        // но только в чужих лаунчерах. По этому флагу мод понимает, что запущен из BLauncher.
+        command.add("-Dblauncher.launcher=true");
 
         command.add("-Djava.library.path=" + nativesDir.toString());
 
@@ -1628,8 +1631,16 @@ public class GameLaunchService {
     private Set<String> readManagedFileList(Path marker) {
         try {
             if (!Files.exists(marker)) return new HashSet<>();
-            return new HashSet<>(Files.readAllLines(marker, StandardCharsets.UTF_8));
-        } catch (IOException e) {
+            // Только то, что годится в имя файла: строка с нулями или «:» (файл списка дописан не до
+            // конца — компьютер выключился, кончилось место) иначе роняла бы каждый запуск
+            // InvalidPathException ещё до старта игры (27.10.2026, ab54a7b2 — причина не доказана).
+            Set<String> names = new HashSet<>();
+            for (String line : Files.readAllLines(marker, StandardCharsets.UTF_8)) {
+                if (line.isBlank() || line.matches(".*[\\x00-\\x1F<>:\"/\\\\|?*].*")) continue;
+                names.add(line);
+            }
+            return names;
+        } catch (IOException | RuntimeException e) {
             return new HashSet<>();
         }
     }

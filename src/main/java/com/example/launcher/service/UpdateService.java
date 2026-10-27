@@ -48,15 +48,19 @@ public class UpdateService {
         public final String downloadUrlJar;
         public final String sha256Exe;
         public final String sha256Jar;
+        /** "notify": true — показать окно с изменениями и «Обновить/Позже», как раньше; без него
+         *  обновление качается молча и ставится при закрытии лаунчера (см. MainController). */
+        public final boolean notify;
 
         UpdateManifest(String latestVersion, String changelog, String downloadUrlExe, String downloadUrlJar,
-                       String sha256Exe, String sha256Jar) {
+                       String sha256Exe, String sha256Jar, boolean notify) {
             this.latestVersion = latestVersion;
             this.changelog = changelog;
             this.downloadUrlExe = downloadUrlExe;
             this.downloadUrlJar = downloadUrlJar;
             this.sha256Exe = sha256Exe;
             this.sha256Jar = sha256Jar;
+            this.notify = notify;
         }
     }
 
@@ -78,7 +82,8 @@ public class UpdateService {
                     getOrNull(obj, "downloadUrl"),
                     getOrNull(obj, "downloadUrlJar"),
                     getOrNull(obj, "sha256"),
-                    getOrNull(obj, "sha256Jar")
+                    getOrNull(obj, "sha256Jar"),
+                    obj.has("notify") && obj.get("notify").isJsonPrimitive() && obj.get("notify").getAsBoolean()
             );
         } catch (Exception e) {
             return null;
@@ -172,7 +177,7 @@ public class UpdateService {
         return destination;
     }
 
-    private String sha256Hex(Path file) throws IOException {
+    public String sha256Hex(Path file) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             // Потоком, а не readAllBytes: файл обновления ~18 МБ, и держать его вторую копию
@@ -445,6 +450,19 @@ public class UpdateService {
      *                       service guessing at it.
      */
     public void applyUpdateAndRestart(Path downloadedFile, Path currentExePath, Path failMarker) throws IOException {
+        applyUpdate(downloadedFile, currentExePath, failMarker, true);
+    }
+
+    /**
+     * Тихое обновление: то же, что applyUpdateAndRestart, но лаунчер после замены НЕ
+     * запускается — его закрыли, новая версия просто будет при следующем открытии. Вызывать
+     * последним делом перед выходом: на Windows скрипт ждёт выхода этого процесса.
+     */
+    public void applyUpdateOnExit(Path downloadedFile, Path currentExePath, Path failMarker) throws IOException {
+        applyUpdate(downloadedFile, currentExePath, failMarker, false);
+    }
+
+    private void applyUpdate(Path downloadedFile, Path currentExePath, Path failMarker, boolean relaunch) throws IOException {
         // One check, not two: isAppImageInstall() already covers both "is this even an .exe of
         // ours" and "is there an app\BLauncher.jar to replace" — see its javadoc for why the old
         // bare endsWith(".exe") test sent every BLauncher.bat run down this path by mistake.
@@ -455,7 +473,7 @@ public class UpdateService {
         }
         Path targetJar = appImageJar(currentExePath);
         if (!Os.isWindows()) {
-            replaceJarAndRestartUnix(downloadedFile, targetJar, currentExePath);
+            replaceJarAndRestartUnix(downloadedFile, targetJar, currentExePath, relaunch);
             return;
         }
 
@@ -476,7 +494,7 @@ public class UpdateService {
         long currentPid = ProcessHandle.current().pid();
         long parentPid = ProcessHandle.current().parent().map(ProcessHandle::pid).orElse(-1L);
 
-        startSelfReplace(downloadedFile, targetJar, currentExePath, currentPid, parentPid, failMarker);
+        startSelfReplace(downloadedFile, targetJar, currentExePath, currentPid, parentPid, failMarker, relaunch);
     }
 
     /**
@@ -491,7 +509,8 @@ public class UpdateService {
      * <p>Преемник ждёт 2 секунды по той же причине, что в AppRestart: лок единственного
      * экземпляра. Лок отдаём заранее, рабочая папка (папка данных) наследуется.
      */
-    private static void replaceJarAndRestartUnix(Path downloadedFile, Path targetJar, Path exe) throws IOException {
+    private static void replaceJarAndRestartUnix(Path downloadedFile, Path targetJar, Path exe, boolean relaunch)
+            throws IOException {
         Path fresh = targetJar.resolveSibling(targetJar.getFileName() + ".new");
         Files.copy(downloadedFile, fresh, StandardCopyOption.REPLACE_EXISTING);
         try {
@@ -502,6 +521,7 @@ public class UpdateService {
                     + ". Проверьте права на папку установки.", e);
         }
         Files.deleteIfExists(downloadedFile);
+        if (!relaunch) return;
         com.example.launcher.MainApp.releaseSingleInstanceLock();
         new ProcessBuilder("sh", "-c", "sleep 2; exec \"$0\"", exe.toAbsolutePath().toString())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
@@ -511,9 +531,9 @@ public class UpdateService {
 
     /** Пишет apply-update.bat + .vbs рядом со скачанным файлом и запускает их отдельным процессом. */
     static void startSelfReplace(Path downloadedFile, Path targetJar, Path exe,
-                                 long currentPid, long parentPid, Path failMarker) throws IOException {
+                                 long currentPid, long parentPid, Path failMarker, boolean relaunch) throws IOException {
         Path scriptPath = downloadedFile.getParent().resolve("apply-update.bat");
-        String script = buildSelfReplaceScript(downloadedFile, targetJar, exe, currentPid, parentPid, failMarker);
+        String script = buildSelfReplaceScript(downloadedFile, targetJar, exe, currentPid, parentPid, failMarker, relaunch);
         Files.writeString(scriptPath, script, StandardCharsets.UTF_8);
 
         // Same hidden-window trick as applyClassesUpdateAndRestart: launching cmd.exe directly
@@ -554,7 +574,7 @@ public class UpdateService {
      * etc) rather than the primary mechanism for waiting out the old process anymore.
      */
     static String buildSelfReplaceScript(Path downloadedFile, Path targetJar, Path exeToRelaunch,
-                                           long currentPid, long parentPid, Path failMarker) {
+                                           long currentPid, long parentPid, Path failMarker, boolean relaunch) {
         String downloaded = downloadedFile.toAbsolutePath().toString();
         String target = targetJar.toAbsolutePath().toString();
         String exe = exeToRelaunch.toAbsolutePath().toString();
@@ -599,6 +619,9 @@ public class UpdateService {
                 + "chcp 65001 > nul\r\n"
                 + "setlocal enabledelayedexpansion\r\n"
                 + "set attempts=0\r\n"
+                // Тихое обновление при закрытии: лаунчер ещё дописывает настройки и гасит сервер —
+                // даём ему 3 секунды выйти самому, прежде чем снимать.
+                + (relaunch ? "" : wait + wait + wait)
                 + killCurrent
                 + killParent
                 + wait
@@ -635,7 +658,7 @@ public class UpdateService {
                 // which is exactly why builds/mods used to show up empty right after an
                 // auto-update restart until the person relaunched a second time by hand (a normal
                 // double-click always gets a correct cwd from Explorer).
-                + "start \"\" /D \"" + exeDir + "\" \"" + exe + "\"\r\n"
+                + (relaunch ? "start \"\" /D \"" + exeDir + "\" \"" + exe + "\"\r\n" : "")
                 + ":cleanup\r\n"
                 + "del \"" + downloaded + "\" > nul 2>&1\r\n"
                 + "(goto) 2>nul & del \"%~f0\"\r\n";

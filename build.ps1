@@ -23,7 +23,10 @@ param(
     # Сознательно опубликовать манифест без архива полной сборки (релиз только с обновлением
     # jar). Без этого ключа такая публикация — ошибка: см. проверку ниже.
     [switch]$AllowNoZip,
-    [switch]$Zip
+    [switch]$Zip,
+    # Показать игрокам окно с изменениями и «Обновить/Позже». Без ключа (с 1.14.30) лаунчер
+    # качает обновление молча и ставит при закрытии — окно оставлено для крупных выпусков.
+    [switch]$Notify
 )
 
 $ErrorActionPreference = 'Stop'
@@ -503,6 +506,7 @@ if (-not $SkipManifest) {
         sha256Zip           = $zipHashValue
         downloadUrlLauncher = $launcherUrl
         sha256Launcher      = $launcherHashValue
+        notify              = [bool]$Notify
     }
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     # Манифест перезаписывался на месте без бэкапа: неудачный запуск с неверным -Version или

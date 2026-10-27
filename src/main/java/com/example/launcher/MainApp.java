@@ -117,6 +117,7 @@ public class MainApp extends Application {
             // the player closes BLauncher while either is still up.
             controller.reportCloseIfInGame();   // до shutdown: он останавливает статистику
             controller.shutdownBackgroundProcesses();
+            controller.applyStagedUpdateOnExit();   // тихое обновление — после всего остального
             System.exit(0);
         });
         primaryStage.show();

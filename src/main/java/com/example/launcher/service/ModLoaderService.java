@@ -83,7 +83,8 @@ public class ModLoaderService {
         ensureInstallerJar(url, jar, log);
         if (!installLegacyForge(jar, mc, combined, log)) {
             log.onLog("[FORGE] Running installer...");
-            runInstaller(jar, log);
+            runClientInstaller(jar, combined,
+                    List.of(librariesDir.resolve("net/minecraftforge/forge/" + mc + "-" + forgeVer)), log);
         }
 
         Path vDir = gameDir.resolve("versions").resolve(combined);
@@ -358,7 +359,8 @@ public class ModLoaderService {
         Path jar = librariesDir.resolve("neoforge/neoforge-" + neoVer + "-installer.jar");
         ensureInstallerJar(url, jar, log);
         log.onLog("[NEOFORGE] Running installer...");
-        runInstaller(jar, log);
+        runClientInstaller(jar, "neoforge-" + neoVer,
+                List.of(librariesDir.resolve("net/neoforged/neoforge/" + neoVer)), log);
 
         // Поиск созданной папки
         String folder = vds.findNeoForgeVersionFolder(gameDir, neoVer);
@@ -706,10 +708,87 @@ public class ModLoaderService {
         return b + group + "/" + p[1] + "/" + p[2] + "/" + file;
     }
 
-    private void runInstaller(Path jar, LogCallback log) throws Exception {
+    /** Установщик Forge/NeoForge, запущенный сейчас (для остановки при закрытии лаунчера). */
+    private static volatile Process runningInstaller;
+
+    /**
+     * Останавливает установщик загрузчика при закрытии лаунчера. Он идёт отдельным процессом
+     * Java, и на Windows выход JVM его не убивает: 25.10.2026 новичок 53024038 закрыл лаунчер
+     * посреди установки Forge 1.21.11, открыл снова — и дважды подряд получил «Установщик
+     * завершился с кодом 1» (второй установщик писал в те же файлы, что и брошенный первый).
+     */
+    public static void stopRunningInstaller() {
+        Process p = runningInstaller;
+        if (p == null || !p.isAlive()) return;
+        p.descendants().forEach(ProcessHandle::destroyForcibly);
+        p.destroyForcibly();
+    }
+
+    /**
+     * Клиентская установка Forge/NeoForge с защитой от остатков прерванной. На время установки
+     * лежит метка libraries/.installing/&lt;версия&gt; с PID установщика. Нашлась метка при старте —
+     * прошлая установка не дошла до конца (закрыли лаунчер, выключили компьютер): добиваем
+     * брошенный установщик, если он ещё жив, и стираем то, что он успел написать, — папку версии
+     * и собственные файлы загрузчика в libraries (их установщик создаёт заново). Скачанные
+     * библиотеки Mojang не трогаем — их установщик проверяет по sha1 сам.
+     *
+     * <p>Упал с ненулевым кодом — один раз чистим и повторяем сами: у 53024038 третье «Играть»
+     * прошло, первые два — нет.
+     */
+    private void runClientInstaller(Path jar, String versionId, List<Path> loaderOutputs, LogCallback log)
+            throws Exception {
+        Path marker = librariesDir.resolve(".installing").resolve(versionId);
+        if (Files.exists(marker)) {
+            log.onLog("[LOADER] Прошлая установка " + versionId + " была прервана — убираю её остатки");
+            stopOrphanInstaller(marker, log);
+            cleanPartialInstall(versionId, loaderOutputs, log);
+        }
+        Files.createDirectories(marker.getParent());
+        Files.writeString(marker, "");
         Path profiles = gameDir.resolve("launcher_profiles.json");
         if (!Files.exists(profiles)) Files.writeString(profiles, "{\"profiles\":{}}");
-        runInstaller(jar, log, "--installClient", gameDir);
+        try {
+            runInstaller(jar, log, "--installClient", gameDir, marker);
+        } catch (IOException first) {
+            String m = first.getMessage();
+            if (m == null || !m.startsWith("Установщик завершился с кодом")) throw first;
+            log.onLog("[LOADER] Установщик не справился — убираю его файлы и пробую ещё раз");
+            cleanPartialInstall(versionId, loaderOutputs, log);
+            runInstaller(jar, log, "--installClient", gameDir, marker);
+        }
+        Files.deleteIfExists(marker);
+    }
+
+    /** Брошенный прошлым запуском установщик ещё работает — останавливаем, иначе два установщика
+     *  пишут одни и те же файлы. PID из метки проверяем по имени программы: за это время Windows
+     *  могла отдать номер чужому процессу. */
+    private void stopOrphanInstaller(Path marker, LogCallback log) {
+        try {
+            String text = Files.readString(marker).trim();
+            if (text.isEmpty()) return;
+            ProcessHandle.of(Long.parseLong(text)).filter(ProcessHandle::isAlive).ifPresent(h -> {
+                String cmd = h.info().command().orElse("").toLowerCase(java.util.Locale.ROOT);
+                String name = cmd.substring(Math.max(cmd.lastIndexOf('\\'),cmd.lastIndexOf('/')) + 1);
+                if (!name.equals("java.exe") && !name.equals("javaw.exe") && !name.equals("java")) return;
+                log.onLog("[LOADER] Останавливаю брошенный установщик (PID " + h.pid() + ")");
+                h.destroyForcibly();
+                try {
+                    h.onExit().get(15, TimeUnit.SECONDS);
+                } catch (Exception ignored) { }
+            });
+        } catch (Exception ignored) { }
+    }
+
+    private void cleanPartialInstall(String versionId, List<Path> loaderOutputs, LogCallback log) {
+        List<Path> dirs = new ArrayList<>(loaderOutputs);
+        dirs.add(gameDir.resolve("versions").resolve(versionId));
+        for (Path dir : dirs) {
+            try {
+                deleteRecursively(dir);
+            } catch (IOException e) {
+                log.onLog("[LOADER] Не удалось удалить " + dir.getFileName() + ": " + e.getMessage());
+            }
+        }
     }
 
     /**
@@ -754,6 +833,12 @@ public class ModLoaderService {
      *  own install) or "--installServer <dir>" (builds a self-contained dedicated server in
      *  dir, complete with a generated run.bat/run.sh) - same jar, same flow, different flag. */
     private void runInstaller(Path jar, LogCallback log, String installFlag, Path targetDir) throws Exception {
+        runInstaller(jar, log, installFlag, targetDir, null);
+    }
+
+    /** {@code pidFile} не null — туда пишется PID установщика (см. runClientInstaller). */
+    private void runInstaller(Path jar, LogCallback log, String installFlag, Path targetDir, Path pidFile)
+            throws Exception {
         Files.createDirectories(targetDir);
         String javaExe = resolveJavaExe();
         if (!Files.exists(Path.of(javaExe))) {
@@ -768,6 +853,8 @@ public class ModLoaderService {
                 javaExe, "-jar", jar.toAbsolutePath().toString(),
                 installFlag, targetDir.toAbsolutePath().toString())
                 .directory(targetDir.toFile()).redirectErrorStream(true).start();
+        runningInstaller = p;
+        if (pidFile != null) Files.writeString(pidFile, Long.toString(p.pid()));
         // Close stdin immediately: some installer builds probe stdin for input and
         // block forever waiting for it if the pipe is left open with nothing written.
         p.getOutputStream().close();
