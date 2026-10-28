@@ -1126,6 +1126,95 @@ public class VersionDownloadService {
         return artifact.has("sha1") && artifact.get("sha1").isJsonPrimitive() ? artifact.get("sha1").getAsString() : null;
     }
 
+    /**
+     * Сверяет sha1 каждой библиотеки из JSON версии (и всей цепочки inheritsFrom) и перекачивает
+     * несовпавшие. Обычная проверка на запуске смотрит только размер — испорченный при обрыве файл
+     * того же размера она пропускает. Вызывается после вылета «не хватает файлов»: 27.10.2026 у
+     * 3aec706a на канале ~0,35 МБ/с с обрывами NeoForge 1.20.1 пять раз падал с NoClassDefFoundError
+     * без единого мода. Возвращает, сколько файлов перекачано.
+     */
+    public int repairLibraries(String versionId) {
+        int fixed = 0;
+        Set<String> seen = new HashSet<>();
+        String current = versionId;
+        while (current != null && seen.add(current)) {
+            Path json = versionsDir.resolve(current).resolve(current + ".json");
+            if (!Files.exists(json)) break;
+            JsonObject obj;
+            try {
+                obj = JsonParser.parseString(Files.readString(json)).getAsJsonObject();
+            } catch (Exception e) {
+                break;
+            }
+            fixed += repairClientJar(current, obj);
+            String nativeClassifier = getNativeClassifier();
+            if (obj.has("libraries")) {
+                for (var el : obj.getAsJsonArray("libraries")) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject lib = el.getAsJsonObject();
+                    if (!LibraryRules.appliesToCurrentOs(lib) || LibraryRules.isForeignNative(lib, nativeClassifier)) continue;
+                    if (!lib.has("downloads") || !lib.getAsJsonObject("downloads").has("artifact")) continue;
+                    JsonObject artifact = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
+                    String url = artifact.has("url") ? artifact.get("url").getAsString() : "";
+                    String sha1 = sha1Field(artifact);
+                    if (url.isBlank() || !artifact.has("path")) continue;   // делает сам установщик загрузчика
+                    Path file = librariesDir.resolve(artifact.get("path").getAsString());
+                    try {
+                        boolean ok = libraryFileOk(file, artifact)
+                                && (sha1 == null || sha1.equalsIgnoreCase(sha1Of(file)));
+                        if (ok) continue;
+                        Files.createDirectories(file.getParent());
+                        downloadFileWithRetries(url, file, MAX_RETRIES, sha1);
+                        fixed++;
+                        System.out.println("[LIBRARIES] Перекачана " + file.getFileName());
+                    } catch (Exception e) {
+                        System.out.println("[LIBRARIES] Не удалось перекачать " + file.getFileName() + ": " + e.getMessage());
+                    }
+                }
+            }
+            current = obj.has("inheritsFrom") ? obj.get("inheritsFrom").getAsString() : null;
+        }
+        return fixed;
+    }
+
+    /**
+     * Клиентский jar версии: по sha1 его не сверить — VersionPatcher после загрузки его меняет.
+     * Поэтому читаем его целиком как zip (каждая запись проверяется по CRC): обрезанный или
+     * испорченный при обрыве файл на этом падает, и тогда качаем заново со сверкой sha1.
+     * 28.10.2026 be206519: после SocketTimeout NeoForge 1.21.1 падал с InjectionError без модов.
+     */
+    private int repairClientJar(String versionId, JsonObject versionData) {
+        if (!versionData.has("downloads") || !versionData.getAsJsonObject("downloads").has("client")) return 0;
+        JsonObject client = versionData.getAsJsonObject("downloads").getAsJsonObject("client");
+        if (!client.has("url")) return 0;
+        Path jar = versionsDir.resolve(versionId).resolve(versionId + ".jar");
+        if (!Files.isRegularFile(jar)) return 0;
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jar.toFile())) {
+            byte[] buf = new byte[65536];
+            var entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                var entry = entries.nextElement();
+                if (entry.isDirectory()) continue;
+                try (java.io.InputStream in = zip.getInputStream(entry)) {
+                    while (in.read(buf) != -1) { /* CRC сверяется при дочитывании до конца */ }
+                }
+            }
+            return 0;
+        } catch (Exception broken) {
+            System.out.println("[LIBRARIES] Клиент " + jar.getFileName() + " повреждён (" + broken.getMessage() + "), качаю заново");
+        }
+        try {
+            String sha1 = client.has("sha1") ? client.get("sha1").getAsString() : null;
+            Files.deleteIfExists(jar);
+            downloadFileWithRetries(client.get("url").getAsString(), jar, MAX_RETRIES, sha1);
+            try { VersionPatcher.patchClientJar(jar); } catch (Exception e) { System.err.println("[VersionPatcher] " + e.getMessage()); }
+            return 1;
+        } catch (Exception e) {
+            System.out.println("[LIBRARIES] Не удалось перекачать " + jar.getFileName() + ": " + e.getMessage());
+            return 0;
+        }
+    }
+
     /** Downloads every library (and matching OS-native classifier) in parallel — libraries can
      *  number in the hundreds for Forge/NeoForge, and each is a small file, so downloading them
      *  one at a time (as this used to) is dominated by per-request round-trip latency rather than

@@ -66,6 +66,11 @@ public class GameLaunchService {
      *  skin/cape files. The URLs should point to a local HTTP server (see LocalSkinServer). */
     public void launchGame(Profile profile, String versionId, GameOutputCallback callback, IntConsumer onExit,
                            String skinUrl, String capeUrl) throws Exception {
+        // Забираем сразу: упади запуск раньше — следующий обычный не должен уйти в Rustcraft.
+        final Path engine = nextEngine;
+        final String engineJavaOverride = nextEngineJava;
+        nextEngine = null;
+        nextEngineJava = null;
         String launchVersion = getLaunchVersionId(versionId, profile);
 
         Path launchJar = versionsDir.resolve(launchVersion).resolve(launchVersion + ".jar");
@@ -123,8 +128,20 @@ public class GameLaunchService {
         syncShaderpacks(profile);
         syncDatapacks(profile);
 
+        // Rustcraft: та же командная строка, но вместо java — rustcraft.exe и только аргументы
+        // игры после главного класса. Аргументы JVM ему не нужны, а @argfile он не читает.
+        String engineJava = null;
+        if (engine != null) {
+            int main = command.indexOf(mainClass);
+            engineJava = engineJavaOverride != null ? engineJavaOverride : command.get(0);
+            List<String> engineCommand = new ArrayList<>();
+            engineCommand.add(engine.toString());
+            if (main >= 0) engineCommand.addAll(command.subList(main + 1, command.size()));
+            command = engineCommand;
+        }
+
         callback.onOutput("[LAUNCH] Starting Minecraft...");
-        callback.onOutput("[LAUNCH] Java executable: " + command.get(0));
+        callback.onOutput("[LAUNCH] " + (engine != null ? "Rustcraft" : "Java") + " executable: " + command.get(0));
 
         // A loader's own JVM args (e.g. NeoForge's -p <module path>, listing half a dozen
         // jars) on top of an already-large mod-loader classpath (100+ libraries) can push the
@@ -138,7 +155,7 @@ public class GameLaunchService {
         // versions' classpaths are far too small to ever hit the command-line limit anyway.
         Path argFile = null;
         ProcessBuilder pb;
-        if (new JavaVersionDetector().getMajorVersion(command.get(0)) >= 9) {
+        if (engine == null && new JavaVersionDetector().getMajorVersion(command.get(0)) >= 9) {
             argFile = writeArgFile(command, callback);
             pb = new ProcessBuilder(command.get(0), "@" + argFile.toAbsolutePath());
         } else {
@@ -146,7 +163,17 @@ public class GameLaunchService {
         }
         pb.directory(gameDir.toFile());
         pb.redirectErrorStream(true);
-        final boolean wslGpu = enableWslGpu(pb, callback);
+        if (engine != null) {
+            // Без этих переменных Rustcraft ищет игру в %APPDATA%\.minecraft, а свои миры и
+            // настройки держит в %LOCALAPPDATA%\rustcraft — направляем его на папку лаунчера.
+            // Java нужна ему один раз: вытащить данные игры из jar 26.3 в свой кэш.
+            Map<String, String> env = pb.environment();
+            env.put("RUSTCRAFT_MC_DIR", gameDir.toAbsolutePath().toString());
+            env.put("RUSTCRAFT_GAME_DIR", gameDir.toAbsolutePath().toString());
+            env.put("RUSTCRAFT_CACHE", engine.getParent().getParent().resolve("cache").toAbsolutePath().toString());
+            if (engineJava != null && Files.isRegularFile(Path.of(engineJava))) env.put("RUSTCRAFT_JAVA", engineJava);
+        }
+        final boolean wslGpu = engine == null && enableWslGpu(pb, callback);
 
         // Persist this launch (full command + every output line, stderr included via
         // redirectErrorStream above) to its own file. The in-app console is the only other place
@@ -837,6 +864,11 @@ public class GameLaunchService {
         return librariesDir.resolve(groupPath + "/" + name + "/" + version + "/" + fileName);
     }
 
+    /** Сверяет по sha1 и перекачивает библиотеки той версии (с загрузчиком), что запустится для profile. */
+    public int repairLibraries(Profile profile, String versionId) {
+        return versionDownloadService.repairLibraries(getLaunchVersionId(versionId, profile));
+    }
+
     private String getLaunchVersionId(String baseVersionId, Profile profile) {
         if ("forge".equals(profile.getModLoader()) && profile.getModLoaderVersion() != null
                 && !profile.getModLoaderVersion().isEmpty()) {
@@ -1300,6 +1332,17 @@ public class GameLaunchService {
     }
 
     private volatile String nextLaunchServer;
+    private volatile Path nextEngine;
+    private volatile String nextEngineJava;
+
+    /**
+     * Запустить БЛИЖАЙШИЙ запуск не через java, а через этот движок (rustcraft.exe); null — как обычно.
+     * {@code engineJava} — Java для самого движка (RUSTCRAFT_JAVA); null — та же, что выбрана для игры.
+     */
+    public void setNextEngine(Path engineExe, String engineJava) {
+        this.nextEngine = engineExe;
+        this.nextEngineJava = engineJava;
+    }
 
     /** Сервер, на который зайти при БЛИЖАЙШЕМ запуске (плитка сервера на главной); null — как обычно. */
     public void setNextLaunchServer(String address) {
@@ -1760,6 +1803,17 @@ public class GameLaunchService {
         for (Process p : new java.util.ArrayList<>(gameProcesses)) {
             if (p.isAlive()) p.destroy();
         }
+    }
+
+    /** Сколько копий игры сейчас идёт. */
+    public int runningGameCount() {
+        int n = 0;
+        synchronized (gameProcesses) {
+            for (Process p : gameProcesses) {
+                if (p.isAlive()) n++;
+            }
+        }
+        return n;
     }
 
     public boolean isGameRunning() {

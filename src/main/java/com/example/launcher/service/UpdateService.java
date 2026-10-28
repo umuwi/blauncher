@@ -39,6 +39,8 @@ public class UpdateService {
      * only address baked into the client at all.
      */
     private static final String MANIFEST_URL = "https://blauncher.ru/update/manifest_pc.json";
+    /** След шагов apply-update.bat — рядом с меткой неудачи (см. buildSelfReplaceScript). */
+    public static final String UPDATE_TRACE_FILE = "update-trace.txt";
 
     /** Parsed result of GET manifest.json — see MANIFEST_URL's format in AGENT_API.md-style docs (README). */
     public static final class UpdateManifest {
@@ -614,10 +616,19 @@ public class UpdateService {
         String fresh = target + ".new";
         String old = target + ".old";
         String marker = failMarker == null ? null : failMarker.toAbsolutePath().toString();
+        // След шагов скрипта (28.10.2026): тихое обновление при закрытии не встало у пятерых за
+        // неделю (reason=no_restart) — метки «locked» нет, то есть скрипт либо не запускался, либо
+        // не дошёл до замены. Буква на шаг: s — начал, k — снял процессы, c — положил .new,
+        // m — заменил, f — сдался. Следующий запуск отправит его в update_fail (trace=…).
+        String trace = failMarker == null ? null
+                : failMarker.toAbsolutePath().resolveSibling(UPDATE_TRACE_FILE).toString();
+        java.util.function.Function<String, String> step = s -> trace == null ? ""
+                : "echo " + s + ">> \"" + trace + "\"\r\n";
         String wait = "timeout /t 1 /nobreak > nul 2>&1 || ping -n 2 127.0.0.1 > nul\r\n";
         return "@echo off\r\n"
                 + "chcp 65001 > nul\r\n"
                 + "setlocal enabledelayedexpansion\r\n"
+                + step.apply("s")
                 + "set attempts=0\r\n"
                 // Тихое обновление при закрытии: лаунчер ещё дописывает настройки и гасит сервер —
                 // даём ему 3 секунды выйти самому, прежде чем снимать.
@@ -625,9 +636,11 @@ public class UpdateService {
                 + killCurrent
                 + killParent
                 + wait
+                + step.apply("k")
                 + "del /f \"" + fresh + "\" > nul 2>&1\r\n"
                 + "copy /y \"" + downloaded + "\" \"" + fresh + "\" > nul 2>&1\r\n"
                 + "if errorlevel 1 goto failed\r\n"
+                + step.apply("c")
                 + ":retry\r\n"
                 + "move /y \"" + fresh + "\" \"" + target + "\" > nul 2>&1\r\n"
                 + "if not exist \"" + fresh + "\" goto copied\r\n"
@@ -640,11 +653,13 @@ public class UpdateService {
                 + wait
                 + "goto retry\r\n"
                 + ":failed\r\n"
+                + step.apply("f")
                 + "if not exist \"" + target + "\" move /y \"" + old + "\" \"" + target + "\" > nul 2>&1\r\n"
                 + "del /f \"" + fresh + "\" > nul 2>&1\r\n"
                 + (marker != null ? "echo locked> \"" + marker + "\"\r\n" : "")
                 + "goto relaunch\r\n"
                 + ":copied\r\n"
+                + step.apply("m")
                 + "del /f \"" + old + "\" > nul 2>&1\r\n"
                 + ":relaunch\r\n"
                 // "/D" is load-bearing, not cosmetic: this cmd.exe's own working directory is

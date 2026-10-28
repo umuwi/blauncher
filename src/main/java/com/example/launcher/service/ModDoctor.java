@@ -176,6 +176,15 @@ public class ModDoctor {
      * @param loader fabric / quilt / forge / neoforge (как в сборке)
      */
     public List<Fix> diagnose(String profileName, String mcVersion, String loader, String crashLog, Log log) {
+        return diagnose(profileName, mcVersion, loader, crashLog, 0, log);
+    }
+
+    /**
+     * @param goodSince когда начался последний запуск этой сборки без вылета (0 — не знаем). Если
+     *                  после вылета ничего точного не нашлось, предлагаем выключить моды, положенные
+     *                  в сборку позже: игра с ними ещё ни разу не работала.
+     */
+    public List<Fix> diagnose(String profileName, String mcVersion, String loader, String crashLog, long goodSince, Log log) {
         String ld = loader == null ? "" : loader.toLowerCase(Locale.ROOT);
         Path dir = modrinth.contentDir("mod", profileName);
         List<JarMeta> jars = readJars(dir);
@@ -454,6 +463,21 @@ public class ModDoctor {
         plan.addAll(exact);
         plan.addAll(out);
         plan.addAll(disables.values());
+        // Ничего точного, а игра работала до того, как добавили моды: 28.10.2026 у 62d97854 NeoForge
+        // 26.3 запускался шесть раз подряд, после ещё одного мода пять раз упал на «Initializing game»
+        // с IllegalStateException, а «Починка» отвечала found=0 — имени мода в журнале не было.
+        if (crashLog != null && !crashLog.isEmpty() && goodSince > 0 && plan.stream().noneMatch(f -> f.selected)) {
+            String when = new java.text.SimpleDateFormat("dd.MM HH:mm").format(new Date(goodSince));
+            for (JarMeta j : active) {
+                try {
+                    if (Files.getLastModifiedTime(j.file).toMillis() <= goodSince) continue;
+                } catch (IOException e) {
+                    continue;
+                }
+                plan.add(new Fix(Kind.DISABLE, j.display(), "добавлен после последнего удачного запуска (" + when
+                        + ") — с тех пор игра падает", j.file, null, null, true));
+            }
+        }
         return plan;
     }
 
@@ -1028,6 +1052,24 @@ public class ModDoctor {
 
     private static boolean isBuiltinLike(String id) {
         return BUILTIN.contains(id);
+    }
+
+    /**
+     * Какому-то моду сборки нужен Fabric API, а его в сборке нет. 28.10.2026: за неделю шестеро
+     * игроков получили первый вылет «need=fabric-api» — многие моды не отмечают его зависимостью на
+     * Modrinth, а в fabric.mod.json требуют. «Починка» каждый раз ставила его, но уже после вылета.
+     */
+    public static boolean needsFabricApi(Path modsDir) {
+        List<JarMeta> jars = readJars(modsDir);
+        Set<String> present = new HashSet<>();
+        for (JarMeta j : jars) { present.addAll(j.ids); present.addAll(j.provided); }
+        if (present.contains("fabric-api") || present.contains("fabric") || present.contains("fabric_api")) return false;
+        for (JarMeta j : jars) {
+            for (String dep : j.requires.keySet()) {
+                if ("fabric-api".equals(canonicalId(dep)) && !present.contains(dep)) return true;
+            }
+        }
+        return false;
     }
 
     /** Модули Fabric API (fabric-networking-api-v1, fabric-api-base…) — это сам Fabric API. */

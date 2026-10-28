@@ -20,6 +20,8 @@ public class LauncherConfig {
     private String lastSelectedVersion;
     /** Loader picked in the "Без модов и сборок" (vanilla) combo on Home — see lastSelectedVersion. */
     private String lastSelectedLoader = "Fabric";
+    /** «Язык игры» той же карточки: "Java" — обычная игра, "Rust" — Rustcraft (RustcraftService). */
+    private String lastSelectedEngine = "Java";
     /**
      * 1 once the quick-play loader default moved from Vanilla to Fabric (BL Core only loads on
      * Fabric). A config that still says "Vanilla" from before that is moved over once; a choice
@@ -205,6 +207,14 @@ public class LauncherConfig {
 
     public void setLastSelectedVersion(String lastSelectedVersion) {
         this.lastSelectedVersion = lastSelectedVersion;
+    }
+
+    public String getLastSelectedEngine() {
+        return lastSelectedEngine;
+    }
+
+    public void setLastSelectedEngine(String lastSelectedEngine) {
+        this.lastSelectedEngine = lastSelectedEngine;
     }
 
     public String getLastSelectedLoader() {

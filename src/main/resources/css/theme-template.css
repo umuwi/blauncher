@@ -497,6 +497,12 @@
 
 .chip-combo {    -fx-pref-width: 170;}
 
+/* «Язык игры» на карточке «Без модов и сборок» (28.10.2026): карточка 180 px, полный chip-combo не влезает. */
+.card-engine-row {    -fx-padding: 4 0 0 0;}
+
+.chip-combo.card-engine-combo {    -fx-pref-width: 78;
+    -fx-min-width: 78;}
+
 .select-label {    -fx-font-size: 13px;
     -fx-text-fill: @text-muted@;
     -fx-font-family: "Inter SemiBold";}
@@ -1060,19 +1066,31 @@
     -fx-text-fill: @ok@;
     -fx-wrap-text: true;}
 
-/* Над кнопкой «Играть», а не поверх неё (26.10.2026): тост «Сборка создана — нажмите „Играть“»
-   закрывал собой ту самую кнопку, а новички как раз не находили, где запускать. */
-.toast-stack {    -fx-padding: 0 0 118 0;}
+/* Справа внизу, с крестиком (28.10.2026): по центру тост закрывал середину экрана, а за 3 секунды
+   длинную ошибку было не дочитать. Снизу отступ на строку «Играть / Остановить» — в самом углу
+   тост ложился на «Остановить», которая нужна как раз тогда, когда что-то пошло не так. */
+.toast-stack {    -fx-padding: 0 16 108 0;}
 
 .toast {    -fx-background-color: @surface-2@;
     -fx-border-color: @line@;
     -fx-border-width: 1;
     -fx-background-radius: 8;
     -fx-border-radius: 8;
-    -fx-text-fill: @text@;
+    -fx-padding: 11 8 11 14;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 14, 0.2, 0, 4);}
+
+.toast-text {    -fx-text-fill: @text@;
     -fx-font-size: 15px;
-    -fx-font-family: "Inter Medium";
-    -fx-padding: 11 14;}
+    -fx-font-family: "Inter Medium";}
+
+.toast-close {    -fx-background-color: transparent;
+    -fx-padding: 2 4;
+    -fx-cursor: hand;}
+
+.toast-close .ikonli-font-icon {    -fx-icon-color: @text-dim@;
+    -fx-icon-size: 15;}
+
+.toast-close:hover .ikonli-font-icon {    -fx-icon-color: @text@;}
 
 .toast.toast-success {    -fx-border-color: @ok-line@;}
 
@@ -1084,6 +1102,17 @@
 .toast.toast-warning {    -fx-border-color: @warn@;}
 
 .toast.toast-info {    -fx-border-color: @accent-line@;}
+
+/* Кнопка действия в тосте («К «Играть»» после первого мода, 28.10.2026). */
+.toast-action {    -fx-background-color: @accent@;
+    -fx-text-fill: @text-on-accent@;
+    -fx-font-family: "Inter Medium";
+    -fx-font-size: 14px;
+    -fx-background-radius: 6;
+    -fx-padding: 5 12;
+    -fx-cursor: hand;}
+
+.toast-action:hover {    -fx-background-color: @accent-hover@;}
 
 .app-version-label {    -fx-text-fill: @text-dim@;
     -fx-font-size: 13px;

@@ -107,6 +107,26 @@ public final class Http {
      *  (из потока загрузки — переносить в UI-поток должен получатель). */
     public static long download(String url, Path destination, Map<String, String> headers,
                                 Duration timeout, Progress progress) throws IOException {
+        // Один файл — одна загрузка за раз. 28.10.2026 у 6e697193 на медленном канале фоновая
+        // загрузка игры не успела остановиться за 20 с после «Играть», и обе качали один и тот же
+        // файл в один и тот же .part: фоновая упала, удалила .part, и загрузка «Играть» сорвалась
+        // на переносе (NoSuchFileException). Вторая теперь ждёт, пока первая закончит с файлом.
+        Path key = destination.toAbsolutePath().normalize();
+        Object lock = FILE_LOCKS.computeIfAbsent(key, k -> new Object());
+        try {
+            synchronized (lock) {
+                return downloadUnlocked(url, destination, headers, timeout, progress);
+            }
+        } finally {
+            FILE_LOCKS.remove(key, lock);
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<Path, Object> FILE_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static long downloadUnlocked(String url, Path destination, Map<String, String> headers,
+                                         Duration timeout, Progress progress) throws IOException {
         Path parent = destination.getParent();
         if (parent != null) Files.createDirectories(parent);
         Path part = destination.resolveSibling(destination.getFileName() + ".part");

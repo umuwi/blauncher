@@ -211,6 +211,9 @@ public final class SkinSourceCatalog {
         Http.Response resp = Http.get(
                 "https://skinsystem.ely.by/textures/" + urlEncode(nickname),
                 Map.of("User-Agent", UA), TIMEOUT);
+        // 28.10.2026: skinsystem.ely.by/textures/Notch отвечал 500 — и человек видел «на Ely.by нет
+        // скина», хотя это сбой их сервера. 5xx — ошибка (с повтором), а не «нет текстуры».
+        if (resp.status() >= 500) throw new IOException("Ely.by ответил " + resp.status());
         String url = null;
         if (resp.ok() && resp.body().length > 0) {
             JsonObject root = JsonParser.parseString(resp.text()).getAsJsonObject();

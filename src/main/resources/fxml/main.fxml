@@ -216,10 +216,19 @@
                             <HBox fx:id="serverMetaRow" visible="false" managed="false">
                                 <ComboBox fx:id="homeServerBuildCombo" styleClass="combo-box, chip-combo" minWidth="230" onAction="#onHomeServerBuildSelected"/>
                             </HBox>
-                            <HBox fx:id="editableMetaRow" spacing="10" visible="false" managed="false">
-                                <ComboBox fx:id="homeVanillaVersionCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaVersionSelected"/>
-                                <ComboBox fx:id="homeVanillaLoaderCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaLoaderSelected"/>
-                            </HBox>
+                            <VBox fx:id="editableMetaRow" spacing="8" visible="false" managed="false">
+                                <!-- Java — обычная игра, Rust — Rustcraft (только его версии, без загрузчиков).
+                                     Живёт на карточке «Без модов и сборок» вверху слева: renderHomeBuildGrid
+                                     переносит этот ряд туда при каждой отрисовке (28.10.2026, просьба владельца). -->
+                                <HBox fx:id="homeEngineRow" styleClass="card-engine-row" spacing="6" alignment="CENTER_LEFT">
+                                    <Label text="Язык игры" styleClass="build-meta" minWidth="-Infinity"/>
+                                    <ComboBox fx:id="homeEngineCombo" styleClass="combo-box, chip-combo, card-engine-combo" onAction="#onHomeEngineSelected"/>
+                                </HBox>
+                                <HBox spacing="10">
+                                    <ComboBox fx:id="homeVanillaVersionCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaVersionSelected"/>
+                                    <ComboBox fx:id="homeVanillaLoaderCombo" styleClass="combo-box, chip-combo" onAction="#onHomeVanillaLoaderSelected"/>
+                                </HBox>
+                            </VBox>
                         </HBox>
                         <Label fx:id="homeServerHint" styleClass="selected-sub" wrapText="true" visible="false" managed="false"/>
                     </VBox>
@@ -1483,8 +1492,8 @@
         </StackPane>
 
         <!-- ===== TOAST STACK ===== -->
-        <VBox fx:id="toastStack" styleClass="toast-stack" alignment="BOTTOM_CENTER" spacing="8"
-              pickOnBounds="false" maxWidth="360" StackPane.alignment="BOTTOM_CENTER"/>
+        <VBox fx:id="toastStack" styleClass="toast-stack" alignment="BOTTOM_RIGHT" spacing="8"
+              pickOnBounds="false" maxWidth="400" maxHeight="-Infinity" StackPane.alignment="BOTTOM_RIGHT"/>
 
     </StackPane>
 

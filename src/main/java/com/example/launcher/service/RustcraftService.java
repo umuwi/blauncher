@@ -1,0 +1,274 @@
+package com.example.launcher.service;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+/**
+ * Rustcraft — Minecraft: Java Edition 26.3, переписанный на Rust (github.com/neotoxicfr/rustcraft).
+ *
+ * <p>Сам он игру не качает: ему нужны уже установленные файлы 26.3 (versions/, assets/) и Java 25
+ * на один первый запуск — им он из официального jar вытаскивает данные игры в свой кэш. Поэтому в
+ * лаунчере это «язык игры: Rust» на карточке «Без модов и сборок»: версия ставится как обычная 26.3, а запускается не java.exe, а
+ * rustcraft.exe с теми же аргументами игры (--username, --uuid, --accessToken, --quickPlay…).
+ *
+ * <p>Программа лежит в &lt;gameDir&gt;/engines/rustcraft/&lt;тег выпуска&gt;/. При каждом запуске
+ * спрашиваем GitHub о последнем выпуске; нет сети или GitHub ответил ошибкой — берём уже скачанный.
+ * Архив сверяется с sha256, который GitHub сам считает для каждого файла выпуска.
+ */
+public class RustcraftService {
+
+    public static final String REPO = "neotoxicfr/rustcraft";
+    /** Версии Minecraft, которые Rustcraft умеет запускать (их показывает «язык игры: Rust»). */
+    public static final List<String> SUPPORTED_VERSIONS = List.of("26.3");
+
+    private static final String API = "https://api.github.com/repos/" + REPO + "/releases/latest";
+    private static final Map<String, String> GITHUB_HEADERS = Map.of(
+            "Accept", "application/vnd.github+json",
+            "User-Agent", "BLauncher");
+
+    private final Path root;
+
+    public RustcraftService(Path gameDir) {
+        this.root = gameDir.resolve("engines").resolve("rustcraft");
+    }
+
+    /** Linux x86-64 и Windows x64 — других сборок у проекта нет. */
+    public static boolean platformSupported() {
+        String arch = System.getProperty("os.arch", "").toLowerCase();
+        boolean x64 = arch.equals("amd64") || arch.equals("x86_64");
+        return x64 && (Os.isWindows() || Os.isLinux());
+    }
+
+    /**
+     * Путь к исполняемому файлу Rustcraft: свежий выпуск с GitHub (скачивается, если его ещё нет)
+     * или уже скачанный, если до GitHub не достучаться.
+     */
+    public Path ensureInstalled(Consumer<String> log) throws IOException {
+        if (!platformSupported()) {
+            throw new IOException("Rustcraft есть только для Windows x64 и Linux x86-64");
+        }
+        JsonObject release;
+        try {
+            Http.Response r = Http.get(API, GITHUB_HEADERS, Duration.ofSeconds(15));
+            if (!r.ok()) throw new IOException("GitHub ответил " + r.status());
+            release = JsonParser.parseString(r.text()).getAsJsonObject();
+        } catch (Exception e) {
+            Path installed = newestInstalled();
+            if (installed != null) {
+                log.accept("[RUSTCRAFT] GitHub недоступен (" + e.getMessage() + ") — беру уже скачанный "
+                        + installed.getParent().getFileName());
+                return installed;
+            }
+            // 28.10.2026 (aa421f38): GitHub ответил ошибкой (без входа — 60 запросов в час на адрес),
+            // а скачанного ещё не было — запуск сорвался. Тот же архив лежит у нас на сайте.
+            log.accept("[RUSTCRAFT] GitHub недоступен (" + e.getMessage() + ") — качаю с blauncher.ru");
+            try {
+                return installFromMirror(log);
+            } catch (Exception mirrorEx) {
+                IOException io = new IOException("Не удалось скачать Rustcraft ни с GitHub, ни с blauncher.ru: "
+                        + e.getMessage(), e);
+                io.addSuppressed(mirrorEx);
+                throw io;
+            }
+        }
+
+        String tag = safeName(release.get("tag_name").getAsString());
+        Path exe = root.resolve(tag).resolve(exeName());
+        if (Files.isRegularFile(exe)) return exe;
+
+        String suffix = assetSuffix();
+        JsonObject asset = null;
+        JsonArray assets = release.getAsJsonArray("assets");
+        for (JsonElement el : assets) {
+            JsonObject a = el.getAsJsonObject();
+            if (a.get("name").getAsString().endsWith(suffix)) {
+                asset = a;
+                break;
+            }
+        }
+        if (asset == null) throw new IOException("В выпуске Rustcraft " + tag + " нет сборки *" + suffix);
+
+        String digest = asset.has("digest") && !asset.get("digest").isJsonNull() ? asset.get("digest").getAsString() : null;
+        log.accept("[RUSTCRAFT] Скачиваю " + asset.get("name").getAsString() + " ("
+                + asset.get("size").getAsLong() / 1_048_576 + " МБ)…");
+        return install(tag, asset.get("name").getAsString(), asset.get("browser_download_url").getAsString(),
+                digest != null && digest.startsWith("sha256:") ? digest.substring(7) : null, log);
+    }
+
+    /** Копия последнего выпуска на нашем сайте: latest.txt = «тег имя-архива sha256» по строке на ОС. */
+    static final String MIRROR = "https://blauncher.ru/rustcraft/";
+
+    private Path installFromMirror(Consumer<String> log) throws IOException {
+        Http.Response r = Http.get(MIRROR + "latest.txt", Map.of(), Duration.ofSeconds(15));
+        if (!r.ok()) throw new IOException("blauncher.ru ответил " + r.status());
+        for (String line : r.text().split("\\R")) {
+            String[] f = line.trim().split("\\s+");
+            if (f.length != 3 || !f[1].endsWith(assetSuffix())) continue;
+            String tag = safeName(f[0]);
+            Path exe = root.resolve(tag).resolve(exeName());
+            if (Files.isRegularFile(exe)) return exe;
+            if (!f[1].matches("[A-Za-z0-9._-]+")) throw new IOException("Странное имя архива: " + f[1]);
+            log.accept("[RUSTCRAFT] Скачиваю " + f[1] + " с blauncher.ru…");
+            return install(tag, f[1], MIRROR + f[1], f[2], log);
+        }
+        throw new IOException("На blauncher.ru нет сборки *" + assetSuffix());
+    }
+
+    private static String assetSuffix() {
+        return Os.isWindows() ? "-windows-x64.zip" : "-linux-x64.tar.gz";
+    }
+
+    /**
+     * Данные игры уже подготовлены (Rustcraft сделал это на прошлом запуске) — Java ему больше
+     * не нужна. Папку кэша задаёт GameLaunchService (RUSTCRAFT_CACHE = engines/rustcraft/cache).
+     */
+    public boolean dataReady(String mcVersion) {
+        return Files.isRegularFile(root.resolve("cache").resolve(mcVersion).resolve("data.bin"));
+    }
+
+    /** Скачать архив выпуска, сверить sha256 (если известен), распаковать в &lt;root&gt;/&lt;tag&gt;/. */
+    private Path install(String tag, String name, String url, String sha256Hex, Consumer<String> log) throws IOException {
+        Path dir = root.resolve(tag);
+        Path exe = dir.resolve(exeName());
+        Files.createDirectories(root);
+        Path archive = root.resolve(name);
+        long got = Http.download(url, archive, Map.of("User-Agent", "BLauncher"), Duration.ofSeconds(60));
+        if (got < 0) throw new IOException("Не скачался " + name);
+        try {
+            if (sha256Hex != null) {
+                String actual = sha256(archive);
+                if (!actual.equalsIgnoreCase(sha256Hex)) {
+                    throw new IOException("Контрольная сумма " + name + " не совпала — файл повреждён при загрузке");
+                }
+            }
+            Path tmp = root.resolve(tag + ".tmp");
+            deleteRecursively(tmp);
+            Files.createDirectories(tmp);
+            if (name.endsWith(".zip")) unzip(archive, tmp);
+            else untar(archive, tmp);
+            Path found = findExe(tmp);
+            if (found == null) throw new IOException("В архиве " + name + " нет " + exeName());
+            if (!Os.isWindows()) found.toFile().setExecutable(true);
+            Path sh = found.resolveSibling("rustcraft.sh");
+            if (Files.exists(sh)) sh.toFile().setExecutable(true);
+            Path extractedRoot = found.getParent();
+            deleteRecursively(dir);
+            Files.move(extractedRoot, dir, StandardCopyOption.ATOMIC_MOVE);
+            deleteRecursively(tmp);
+        } finally {
+            Files.deleteIfExists(archive);
+        }
+        log.accept("[RUSTCRAFT] Установлен " + tag);
+        removeOldReleases(tag);
+        return exe;
+    }
+
+    private static String exeName() {
+        return Os.isWindows() ? "rustcraft.exe" : "rustcraft";
+    }
+
+    /** Тег выпуска идёт в имя папки — только безопасные символы. */
+    private static String safeName(String tag) {
+        String s = tag.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (s.isEmpty() || s.startsWith(".")) throw new IllegalArgumentException("Странный тег выпуска: " + tag);
+        return s;
+    }
+
+    private Path newestInstalled() throws IOException {
+        if (!Files.isDirectory(root)) return null;
+        try (Stream<Path> s = Files.list(root)) {
+            return s.filter(p -> !p.getFileName().toString().endsWith(".tmp"))
+                    .map(p -> p.resolve(exeName()))
+                    .filter(Files::isRegularFile)
+                    .max((a, b) -> Long.compare(a.toFile().lastModified(), b.toFile().lastModified()))
+                    .orElse(null);
+        }
+    }
+
+    private void removeOldReleases(String keep) {
+        try (Stream<Path> s = Files.list(root)) {
+            for (Path p : s.toList()) {
+                if (Files.isDirectory(p) && !p.getFileName().toString().equals(keep)) deleteRecursively(p);
+            }
+        } catch (IOException ignored) {
+            // старый выпуск остался на диске — не повод мешать запуску
+        }
+    }
+
+    private static Path findExe(Path dir) throws IOException {
+        try (Stream<Path> s = Files.walk(dir, 3)) {
+            return s.filter(p -> p.getFileName().toString().equals(exeName()) && Files.isRegularFile(p))
+                    .findFirst().orElse(null);
+        }
+    }
+
+    private static void unzip(Path zip, Path dest) throws IOException {
+        Path base = dest.toAbsolutePath().normalize();
+        try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
+            ZipEntry e;
+            while ((e = in.getNextEntry()) != null) {
+                Path out = base.resolve(e.getName()).normalize();
+                if (!out.startsWith(base)) throw new IOException("Подозрительный путь в архиве: " + e.getName());
+                if (e.isDirectory()) {
+                    Files.createDirectories(out);
+                } else {
+                    Files.createDirectories(out.getParent());
+                    Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    /** tar.gz только на Linux, а там tar есть всегда. */
+    private static void untar(Path archive, Path dest) throws IOException {
+        Process p = new ProcessBuilder("tar", "-xzf", archive.toAbsolutePath().toString(),
+                "--no-same-owner", "-C", dest.toAbsolutePath().toString())
+                .redirectErrorStream(true).start();
+        String out;
+        try (InputStream in = p.getInputStream()) {
+            out = new String(in.readAllBytes());
+        }
+        try {
+            if (p.waitFor() != 0) throw new IOException("tar не распаковал архив: " + out.trim());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Распаковка прервана", e);
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) != -1) md.update(buf, 0, n);
+            return HexFormat.of().formatHex(md.digest());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+    }
+
+    private static void deleteRecursively(Path p) throws IOException {
+        if (!Files.exists(p)) return;
+        try (Stream<Path> s = Files.walk(p)) {
+            for (Path x : s.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(x);
+        }
+    }
+}

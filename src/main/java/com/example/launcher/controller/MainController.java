@@ -19,6 +19,7 @@ import com.example.launcher.model.UserProfile;
 import com.example.launcher.service.AuthService;
 import com.example.launcher.service.BrandPluginCatalogService;
 import com.example.launcher.service.ConfigService;
+import com.example.launcher.service.RustcraftService;
 import com.example.launcher.service.CpuWatchdog;
 import com.example.launcher.service.CustomSkinApiServer;
 import com.example.launcher.service.GameLaunchService;
@@ -243,7 +244,9 @@ public class MainController {
     @FXML private HBox lockedMetaRow;
     @FXML private Label selectedVersionChip;
     @FXML private Label selectedLoaderChip;
-    @FXML private HBox editableMetaRow;
+    @FXML private VBox editableMetaRow;
+    @FXML private HBox homeEngineRow;
+    @FXML private ComboBox<String> homeEngineCombo;
     @FXML private ComboBox<String> homeVanillaVersionCombo;
     @FXML private ComboBox<String> homeVanillaLoaderCombo;
     @FXML private Button playButton;
@@ -956,6 +959,14 @@ public class MainController {
     private long currentScreenSince = sessionStartedAt;
     private volatile long lastStatAt = sessionStartedAt;
     private int screenStats, msgStats, searchStats;
+    /**
+     * Нажатия на текущем экране: «что трогал» по fx:id, в порядке первого нажатия (28.10.2026).
+     * По переходам между экранами было видно, ГДЕ человек сидел, но не ЧТО он там делал: новички
+     * 41baf131 и 2e2db5f5 по 2–5 минут ходили по меню и ушли, а что искали — неизвестно. Уходит
+     * одним событием «ui» при смене экрана и при закрытии; текст полей и названия сборок не шлём.
+     */
+    private final java.util.LinkedHashMap<String, Integer> uiClicks = new java.util.LinkedHashMap<>();
+    private int uiStats;
     private String lastMsgAt = "";
     private long lastMsgTime;
     /** Currently selected build on Home/Server ("no build / vanilla" = null). */
@@ -1022,6 +1033,8 @@ public class MainController {
     private volatile int downloadPercent = -1;
     /** Процент загрузки Java (-1 — размер неизвестен или Java не качается); для busy=java:NN. */
     private volatile int javaPercent = -1;
+    /** Сколько процентов установки Forge/NeoForge позади (-1 — не идёт или не знаем). */
+    private volatile int loaderPercent = -1;
     /** Когда пошли «ресурсы N/M» и сколько их было сделано в тот момент — для оценки времени. */
     private volatile long assetsTimerAt;
     private volatile int assetsTimerDone;
@@ -1109,6 +1122,7 @@ public class MainController {
         this.serverService = serverService;
         this.gameDir = gameDir;
         this.modpackService = new ModpackService(gameDir);
+        installUiClickTracker();
 
         // Linux-сборка (20.10.2026): ZeroTier там ставится только через sudo и вживую не проверен,
         // поэтому пока выключен целиком. Все обработчики уже проверяют сервис на null.
@@ -2484,6 +2498,7 @@ public class MainController {
         // нажатия, а порядок и время по экранам так и остались неизвестны; 22.10.2026 — все переходы).
         if (name != null && !name.equals(currentScreen)) {
             long now = System.currentTimeMillis();
+            flushUiClicks(false);
             screensSeen.add(name);
             if (screenStats++ < 80) {
                 stat("screen", name + (currentScreen == null ? ""
@@ -3081,8 +3096,9 @@ public class MainController {
                 } else if (combo == serverVanillaVersionCombo) {
                     preferred = config.getLastSelectedServerVersion();
                 }
-                combo.setItems(FXCollections.observableArrayList(versionListCache));
-                if (preferred != null && !preferred.isBlank() && versionListCache.contains(preferred)) {
+                combo.setItems(FXCollections.observableArrayList(
+                        combo == homeVanillaVersionCombo ? homeVersionItems() : versionListCache));
+                if (preferred != null && !preferred.isBlank() && combo.getItems().contains(preferred)) {
                     combo.getSelectionModel().select(preferred);
                 } else if (!combo.getItems().isEmpty()) {
                     combo.getSelectionModel().selectFirst();
@@ -3100,6 +3116,7 @@ public class MainController {
     private void refreshHomeLoaderOptionsForVersion(String mcVersion) {
         if (mcVersion == null || mcVersion.isBlank()) return;
         long requestToken = ++homeLoaderRefreshSeq;
+        if (homeRustSelected()) return;   // у Rustcraft загрузчиков нет, список скрыт
         List<String> candidates = List.of("Forge", "Fabric", "NeoForge", "Quilt");
         executor.submit(() -> {
             List<String> available = new ArrayList<>();
@@ -3136,6 +3153,73 @@ public class MainController {
         if (saved != null && options.contains(saved)) return saved;
         if (options.contains("Fabric")) return "Fabric";
         return options.get(0);
+    }
+
+    private static final String ENGINE_JAVA = "Java";
+    private static final String ENGINE_RUST = "Rust";
+
+    /** На карточке «Без модов и сборок» выбран язык игры Rust — запуск через Rustcraft. */
+    private boolean homeRustSelected() {
+        return homeEngineCombo != null && ENGINE_RUST.equals(homeEngineCombo.getSelectionModel().getSelectedItem())
+                && RustcraftService.platformSupported();
+    }
+
+    /**
+     * Версии на карточке «Без модов и сборок»: у Java — все, у Rust — только те, что умеет
+     * Rustcraft (см. RustcraftService). Серверы и сборки этого выбора не касаются.
+     */
+    private List<String> homeVersionItems() {
+        return homeRustSelected() ? new ArrayList<>(RustcraftService.SUPPORTED_VERSIONS) : new ArrayList<>(versionListCache);
+    }
+
+    /** Выбранная на главной версия Minecraft. */
+    private String homeVanillaVersion() {
+        return homeVanillaVersionCombo.getSelectionModel().getSelectedItem();
+    }
+
+    /** У Rust выбора загрузчика нет совсем — список прячется. */
+    private void applyEngineToLoaderCombo() {
+        boolean java = !homeRustSelected();
+        homeVanillaLoaderCombo.setVisible(java);
+        homeVanillaLoaderCombo.setManaged(java);
+    }
+
+    @FXML
+    private void onHomeEngineSelected() {
+        String engine = homeEngineCombo.getSelectionModel().getSelectedItem();
+        if (engine == null || restoringVanillaCombos) return;
+        if (!engine.equals(config.getLastSelectedEngine())) {
+            stat("engine", engine.toLowerCase());
+            config.setLastSelectedEngine(engine);
+            try { configService.saveConfig(config); } catch (Exception ignored) { }
+        }
+        applyEngineToLoaderCombo();
+        restoringVanillaCombos = true;
+        try {
+            homeVanillaVersionCombo.setItems(FXCollections.observableArrayList(homeVersionItems()));
+            String saved = homeRustSelected() ? null : config.getLastSelectedVersion();
+            if (saved != null && homeVanillaVersionCombo.getItems().contains(saved)) {
+                homeVanillaVersionCombo.getSelectionModel().select(saved);
+            } else {
+                homeVanillaVersionCombo.getSelectionModel().selectFirst();
+            }
+        } finally {
+            restoringVanillaCombos = false;
+        }
+        updatePlayButtonTint(homeVanillaVersion());
+        refreshHomeLoaderOptionsForVersion(homeVanillaVersion());
+        // Язык выбирают на карточке «Без модов и сборок» — значит, играть хотят именно без сборки.
+        // Режим сервера не трогаем: там этот выбор действует, когда для сервера взято «Без модов».
+        if (selectedServer != null) {
+            renderCurrentBuildPanel();
+        } else if (selectedBuild != null && !selectedBuild.isVanillaEntry()) {
+            Platform.runLater(() -> {
+                selectedBuild = null;
+                renderHomeBuildGrid();
+                renderBuildsGrid();
+                renderCurrentBuildPanel();
+            });
+        }
     }
 
     private void applyHomeLoaderOptions(List<String> result) {
@@ -3445,7 +3529,22 @@ public class MainController {
         stripScrollValue.addListener((obs, oldValue, newValue) ->
                 homeBuildScroll.setHvalue(newValue.doubleValue()));
 
-        homeVanillaVersionCombo.setItems(FXCollections.observableArrayList(versionListCache));
+        homeEngineCombo.setItems(FXCollections.observableArrayList(ENGINE_JAVA, ENGINE_RUST));
+        boolean rustPossible = RustcraftService.platformSupported();
+        homeEngineRow.setVisible(rustPossible);
+        homeEngineRow.setManaged(rustPossible);
+        // Ряд стоит внутри карточки «Без модов»: щелчок по списку не должен считаться щелчком по карточке
+        // (та перерисовывает полосу и переносила бы список, пока он открыт).
+        homeEngineRow.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_CLICKED, javafx.event.Event::consume);
+        restoringVanillaCombos = true;
+        try {
+            homeEngineCombo.getSelectionModel().select(
+                    rustPossible && ENGINE_RUST.equals(config.getLastSelectedEngine()) ? ENGINE_RUST : ENGINE_JAVA);
+        } finally {
+            restoringVanillaCombos = false;
+        }
+        applyEngineToLoaderCombo();
+        homeVanillaVersionCombo.setItems(FXCollections.observableArrayList(homeVersionItems()));
         versionCombosToRefresh.add(homeVanillaVersionCombo);
         homeVanillaLoaderCombo.setItems(FXCollections.observableArrayList(
                 "Vanilla", "Forge", "Fabric", "NeoForge", "Quilt"));
@@ -3853,7 +3952,7 @@ public class MainController {
             refreshHomeLoaderOptionsForVersion(serverVer);
         }
 
-        String version = vanilla ? homeVanillaVersionCombo.getSelectionModel().getSelectedItem() : selectedBuild.getVersionId();
+        String version = vanilla ? homeVanillaVersion() : selectedBuild.getVersionId();
         String[] range = serverVersionRange(st);
         if (range != null && version != null && !versionInRange(version, range[0], range[1])) {
             String server = range[0].equals(range[1]) ? range[0] : range[0] + "–" + range[1];
@@ -4244,6 +4343,9 @@ public class MainController {
         vanillaStub.setName(VANILLA_LABEL);
         vanillaStub.setVanillaEntry(true);
         Node vanillaCard = buildCardNode(vanillaStub, selectedServer == null && (selectedBuild == null || selectedBuild.isVanillaEntry()));
+        // Язык игры — на самой карточке (28.10.2026, просьба владельца): он относится только к ней,
+        // а в панели «Текущая сборка» его не было видно, пока карточку не выбрали.
+        if (vanillaCard instanceof VBox card && homeEngineRow != null) card.getChildren().add(homeEngineRow);
         homeVanillaCardHolder.getChildren().add(vanillaCard);
 
         // Only builds starred (liked) from the Builds screen show up in this strip — an
@@ -4346,7 +4448,7 @@ public class MainController {
         }
 
         playHint.setText(vanilla ? "Готово к запуску" : "Готово к запуску · " + selectedBuild.getVersionId());
-        updatePlayButtonTint(vanilla ? homeVanillaVersionCombo.getSelectionModel().getSelectedItem() : selectedBuild.getVersionId());
+        updatePlayButtonTint(vanilla ? homeVanillaVersion() : selectedBuild.getVersionId());
     }
 
     /** Minecraft's own loading screen is red starting with 1.16 (1.16 and newer), while older
@@ -4394,11 +4496,13 @@ public class MainController {
         // correction selects (which also fire this same onAction) saving over the real value —
         // see its javadoc on applyVersionListToCombos() for the bug this caused.
         String selected = homeVanillaVersionCombo.getSelectionModel().getSelectedItem();
-        if (!restoringVanillaCombos && selected != null && !selected.equals(config.getLastSelectedVersion())) {
+        // У Rust список из одной-двух версий — сохранённый выбор Java им не затираем.
+        if (!restoringVanillaCombos && !homeRustSelected() && selected != null
+                && !selected.equals(config.getLastSelectedVersion())) {
             config.setLastSelectedVersion(selected);
             try { configService.saveConfig(config); } catch (Exception ignored) { }
         }
-        updatePlayButtonTint(selected);
+        updatePlayButtonTint(homeVanillaVersion());
         refreshHomeLoaderOptionsForVersion(selected);
         if (selectedServer != null && !restoringVanillaCombos) renderCurrentBuildPanel();
     }
@@ -4451,9 +4555,13 @@ public class MainController {
             return;
         }
         boolean vanilla = selectedBuild == null || selectedBuild.isVanillaEntry();
-        String versionId = vanilla ? homeVanillaVersionCombo.getSelectionModel().getSelectedItem() : selectedBuild.getVersionId();
+        String versionId = vanilla ? homeVanillaVersion() : selectedBuild.getVersionId();
         String modLoader = vanilla ? mapDisplayLoaderToInternal(homeVanillaLoaderCombo.getSelectionModel().getSelectedItem())
                 : mapDisplayLoaderToInternal(selectedBuild.getModLoader());
+        // Язык игры Rust: версия ставится как обычная, а запускается движком на Rust.
+        if (vanilla && homeRustSelected()) {
+            modLoader = "rustcraft";
+        }
         if (versionId == null || versionId.isBlank()) {
             log("[ERROR] Выберите версию перед запуском.");
             stat("play_blocked", "no_version");
@@ -4469,6 +4577,7 @@ public class MainController {
         // the wrong version was ready while the original one was still mid-download.
         homeVanillaVersionCombo.setDisable(true);
         homeVanillaLoaderCombo.setDisable(true);
+        homeEngineCombo.setDisable(true);
         // Hidden for the duration — otherwise this kept showing its stale "Готово к запуску · X"
         // right next to homeStatusLabel's real "Downloading..."/"Installing..." text, two
         // contradictory statuses on screen at once.
@@ -4612,7 +4721,29 @@ public class MainController {
                 }
 
                 String modLoaderVersion = null;
-                if (modLoader != null && !"vanilla".equals(modLoader)) {
+                Path rustcraftExe = null;
+                String rustcraftJava = null;
+                if ("rustcraft".equals(modLoader)) {
+                    launchPhase = "loader";
+                    setPlayButtonBusy("Установка Rustcraft…");
+                    Platform.runLater(() -> homeStatusLabel.setText("Проверяю Rustcraft на GitHub…"));
+                    long rcT0 = System.currentTimeMillis(), rcB0 = Http.DOWNLOADED.get();
+                    try {
+                        rustcraftExe = new RustcraftService(gameDir).ensureInstalled(msg -> Platform.runLater(() -> log(msg)));
+                    } catch (Exception rcEx) {
+                        stat("rustcraft", "fail exc=" + rcEx.getClass().getSimpleName());
+                        throw rcEx;
+                    }
+                    long rcMb = (Http.DOWNLOADED.get() - rcB0) / 1_048_576;
+                    stat("rustcraft", "ok tag=" + rustcraftExe.getParent().getFileName()
+                            + " dl=" + (Http.DOWNLOADED.get() > rcB0 ? 1 : 0) + " mb=" + rcMb
+                            + " sec=" + (System.currentTimeMillis() - rcT0) / 1000);
+                    log("[RUSTCRAFT] Движок: " + rustcraftExe);
+                    if (!new RustcraftService(gameDir).dataReady(versionId)) {
+                        rustcraftJava = rustcraftSourceJava(javaPath);
+                        log("[RUSTCRAFT] Первый запуск дольше: Rustcraft один раз готовит данные игры из 26.3 (несколько минут)");
+                    }
+                } else if (modLoader != null && !"vanilla".equals(modLoader)) {
                     ModLoaderService.Loader loaderEnum = switch (modLoader) {
                         case "forge" -> ModLoaderService.Loader.FORGE;
                         case "fabric" -> ModLoaderService.Loader.FABRIC;
@@ -4693,13 +4824,46 @@ public class MainController {
                         Platform.runLater(() -> homeStatusLabel.setText("Установка " + modLoader + " " + loaderVersionForStatus
                                 + "… обычно до пары минут, не закрывайте лаунчер"));
                         log("[LOADER] Установка " + modLoader + " " + modLoaderVersion + " для MC " + versionId + "...");
-                        modLoaderService.installLoader(versionId, loaderEnum, modLoaderVersion,
-                                msg -> Platform.runLater(() -> log(msg)));
+                        String loaderTitle = switch (modLoader) {
+                            case "forge" -> "Forge";
+                            case "neoforge" -> "NeoForge";
+                            case "fabric" -> "Fabric";
+                            default -> modLoader;
+                        };
+                        loaderPercent = -1;
+                        modLoaderService.setInstallProgress((f, stage) -> {
+                            loaderPercent = f < 0 ? -1 : (int) Math.round(f * 100);
+                            setHomeProgress(f < 0 ? -1 : f, "Установка " + loaderTitle + " · "
+                                    + (loaderPercent >= 0 ? loaderPercent + "% · " : "") + stage
+                                    + " · не закрывайте лаунчер");
+                        });
+                        try {
+                            modLoaderService.installLoader(versionId, loaderEnum, modLoaderVersion,
+                                    msg -> Platform.runLater(() -> log(msg)));
+                        } finally {
+                            modLoaderService.setInstallProgress(null);
+                            loaderPercent = -1;
+                        }
                         log("[LOADER] " + modLoader + " установлен.");
                     }
                 }
 
-                Profile launchProfile = vanillaOrRealProfile(versionId, modLoader, modLoaderVersion);
+                Profile launchProfile = vanillaOrRealProfile(versionId,
+                        rustcraftExe != null ? "vanilla" : modLoader, modLoaderVersion);
+
+                // Прошлый запуск этой версии упал на «не хватает файлов» — сперва сверяем библиотеки
+                // по sha1 (обычная проверка смотрит только размер). 27.10.2026 3aec706a.
+                String launchKey = modLoader + " " + versionId;
+                if (launchKey.equals(repairLibsFor)) {
+                    repairLibsFor = null;
+                    launchPhase = "verify";
+                    setPlayButtonBusy("Проверка файлов…");
+                    Platform.runLater(() -> homeStatusLabel.setText("Проверяю файлы игры после вылета…"));
+                    int fixed = gameLaunchService.repairLibraries(launchProfile, versionId);
+                    stat("lib_repair", launchKey + " fixed=" + fixed);
+                    log("[LAUNCH] Проверка файлов после вылета: " + (fixed == 0 ? "всё цело" : "перекачано " + fixed));
+                    launchPhase = "start";
+                }
 
                 // Куда писать наигранное время — решаем СЕЙЧАС, при запуске, а не при выходе из
                 // игры. Прежний код сравнивал launchProfile с selectedBuild уже в колбэке выхода:
@@ -4792,6 +4956,8 @@ public class MainController {
 
                 if (pendingLaunchServer != null) log("[LAUNCH] Сразу заходим на сервер " + pendingLaunchServer);
                 gameLaunchService.setNextLaunchServer(pendingLaunchServer);
+                gameLaunchService.setNextEngine(rustcraftExe, rustcraftJava);
+                final boolean viaRustcraft = rustcraftExe != null;
                 gameLaunchService.launchGame(launchProfile, versionId,
                         output -> {
                             log(output);   // log() сам переносит строки на поток интерфейса пачкой
@@ -4826,6 +4992,10 @@ public class MainController {
                             String cls = "files".equals(why) ? missingClassPackage(capturedLog) : "";
                             String desc = crashed ? crashDescription(capturedLog) : "";
                             String top = "StackOverflowError".equals(exc) ? stackOverflowPackage(capturedLog) : "";
+                            String http = crashed ? failedHttpEndpoint(capturedLog) : "";
+                            // Сколько ещё копий игры шло в момент выхода (28.10.2026): у ab54a7b2 и
+                            // d9326fdd сбои начались сразу после второй копии, а проверить связь было не по чему.
+                            int others = gameLaunchService.runningGameCount();
                             stat("game_exit", "code=" + exitCode
                                     + " min=" + (System.currentTimeMillis() - launchStartMillis) / 60000L
                                     + " user=" + (stoppedByUser ? 1 : 0)
@@ -4835,6 +5005,8 @@ public class MainController {
                                     + (cls.isEmpty() ? "" : " cls=" + cls)
                                     + (top.isEmpty() ? "" : " top=" + top)
                                     + (desc.isEmpty() ? "" : " desc=" + desc)
+                                    + (http.isEmpty() ? "" : " http=" + http)
+                                    + (others > 0 ? " others=" + others : "")
                                     + (!crashed && ModDoctor.loaderRefused(capturedLog) ? " refused=1" : ""));
                             finishLaunchAttempt();
                             if (skinServerForExit[0] != null) {
@@ -4852,9 +5024,31 @@ public class MainController {
                             } else if (config.isMinimizeOnLaunch()) {
                                 Platform.runLater(() -> primaryStage.setIconified(false));
                             }
+                            // Mixin, не нашедший свой класс в первую минуту, — тоже признак битых файлов:
+                            // 28.10.2026 у be206519 после обрыва загрузки (SocketTimeout) NeoForge 1.21.1
+                            // без модов дважды падал с InjectionError, «Починка» ничего не нашла, а помогла
+                            // только полная перекачка. Сверка sha1 стоит секунды, лишний раз не страшно.
+                            boolean mixinEarly = crashed && (System.currentTimeMillis() - launchStartMillis) < 60_000L
+                                    && exc.matches("InjectionError|MixinApplyError|MixinTransformerError|InvalidInjectionException");
+                            if (crashed && ("files".equals(why) || "corrupt".equals(why)) || mixinEarly) repairLibsFor = launchKey;
                             if (crashed) {
                                 log("[LAUNCH] Игра завершилась с кодом " + exitCode);
-                                if (!reportModConflictIfAny(capturedLog)) reportCrash(exitCode, why);
+                                long crashMinutes = (System.currentTimeMillis() - launchStartMillis) / 60000L;
+                                if (viaRustcraft && crashMinutes < 2) {
+                                    // Rustcraft — чужой экспериментальный движок. 28.10.2026 за час четверо
+                                    // новичков выбрали «язык игры: Rust», и у всех он падал через 5–60 с
+                                    // («InternalError») по многу раз подряд; двое так и ушли. Возвращаем Java
+                                    // сами: обычная 26.3 у них запускалась.
+                                    stat("engine_fallback", "exc=" + (exc.isEmpty() ? why : exc));
+                                    Platform.runLater(() -> {
+                                        if (homeEngineCombo != null) homeEngineCombo.getSelectionModel().select(ENGINE_JAVA);
+                                        onHomeEngineSelected();
+                                        showToast("Rustcraft (язык игры Rust) не запустился на этом компьютере — это пробный движок. "
+                                                + "Переключил обратно на обычную Java: нажмите «Играть»", "warning");
+                                    });
+                                } else {
+                                    if (!reportModConflictIfAny(capturedLog)) reportCrash(exitCode, why);
+                                }
                                 offerModDoctor(playtimeTarget, capturedLog, why);
                             } else if (ModDoctor.loaderRefused(capturedLog)) {
                                 // Загрузчик показал свой экран ошибки, игрок его закрыл — код 0, но игры не было.
@@ -4869,6 +5063,12 @@ public class MainController {
                             long sessionMinutes = (System.currentTimeMillis() - launchStartMillis) / 60000L;
                             playtimeTarget.addPlaytimeMinutes(sessionMinutes);
                             playtimeTarget.setLastLaunchedAt(System.currentTimeMillis());
+                            // Игра с этими модами работала: закрылась сама, без отказа загрузчика, или
+                            // шла хотя бы 5 минут. Время начала, а не конца: мод, добавленный посреди
+                            // игры, в ней не участвовал.
+                            if (!crashed && !ModDoctor.loaderRefused(capturedLog) || sessionMinutes >= 5) {
+                                playtimeTarget.setLastGoodLaunchAt(launchStartMillis);
+                            }
                             try {
                                 profileService.saveProfile(playtimeTarget);
                             } catch (IOException ignored) {
@@ -4889,6 +5089,7 @@ public class MainController {
                     playButton.setDisable(false);
                     homeVanillaVersionCombo.setDisable(false);
                     homeVanillaLoaderCombo.setDisable(false);
+                    homeEngineCombo.setDisable(false);
                     playHint.setVisible(true);
                     playHint.setManaged(true);
                     stopButton.setDisable(false);
@@ -4970,6 +5171,7 @@ public class MainController {
             playButton.setDisable(false);
             homeVanillaVersionCombo.setDisable(false);
             homeVanillaLoaderCombo.setDisable(false);
+            homeEngineCombo.setDisable(false);
             playHint.setVisible(true);
             playHint.setManaged(true);
             stopButton.setDisable(!gameLaunchService.isGameRunning());
@@ -5055,7 +5257,7 @@ public class MainController {
             List<ModDoctor.Fix> plan;
             try {
                 plan = modDoctor.diagnose(build.getName(), build.getVersionId(), loader, crashLog,
-                        msg -> Platform.runLater(() -> log(msg)));
+                        afterCrash ? build.getLastGoodLaunchAt() : 0, msg -> Platform.runLater(() -> log(msg)));
             } catch (Exception e) {
                 Platform.runLater(() -> log("[FIX] Проверка модов не удалась: " + e.getMessage()));
                 return;
@@ -5351,6 +5553,31 @@ public class MainController {
     private static final java.util.regex.Pattern CRASH_DESCRIPTION = java.util.regex.Pattern.compile("Description: ([^\r\n]+)");
 
     /**
+     * Какой запрос игры к сервисам Mojang не прошёл — «api.minecraftservices.com/player/attributes:401».
+     * 28.10.2026 у d9326fdd ванильная 26.2 дважды упала с MinecraftClientHttpException, и по одному
+     * имени ошибки не понять, что игра запрашивала. Хост и путь — адрес сервиса, не данные человека;
+     * в отметку попадают только буквы, цифры, точки, «/» → «_» и код ответа.
+     */
+    static String failedHttpEndpoint(String log) {
+        if (log == null) return "";
+        int at = log.lastIndexOf("MinecraftClientHttpException");
+        if (at < 0) return "";
+        String around = log.substring(at, Math.min(log.length(), at + 1500));
+        java.util.regex.Matcher url = HTTP_URL.matcher(around);
+        String where = url.find() ? (url.group(1) + url.group(2)).replace('/', '_') : "";
+        java.util.regex.Matcher code = HTTP_CODE.matcher(around);
+        String status = code.find() ? (code.group(1) != null ? code.group(1) : code.group(2)) : "";
+        String out = where + (status.isEmpty() ? "" : ":" + status);
+        out = out.replaceAll("[^A-Za-z0-9_.:\\-]", "");
+        return out.length() > 60 ? out.substring(0, 60) : out;
+    }
+
+    private static final java.util.regex.Pattern HTTP_URL = java.util.regex.Pattern.compile(
+            "https?://([a-z0-9.\\-]+)((?:/[A-Za-z_\\-]+){0,3})");
+    private static final java.util.regex.Pattern HTTP_CODE = java.util.regex.Pattern.compile(
+            "(?i)(?:status(?: code)?|code|HTTP)[^0-9\\n]{0,6}([1-5][0-9]{2})\\b|\\b(?:returned|due to) ([1-5][0-9]{2})\\b");
+
+    /**
      * Чей код зациклился при StackOverflowError — пакет (до трёх частей) самого частого кадра стека.
      * 23.10.2026 ванильная 1.20.4 у 8ca4049b шесть раз подряд падала так при запуске, а по одному
      * имени ошибки не понять, игра это, Java или чья-то программа-оверлей.
@@ -5620,6 +5847,7 @@ public class MainController {
         String phase = launchPhase;
         if (phase.isEmpty()) return "";
         if ("java".equals(phase) && javaPercent >= 0) return "java:" + javaPercent;
+        if ("loader".equals(phase) && loaderPercent >= 0) return "loader:" + loaderPercent;
         return "dl".equals(phase) ? "dl:" + Math.max(0, downloadPercent) : phase;
     }
 
@@ -5788,6 +6016,48 @@ public class MainController {
                         + "Установите вручную: https://adoptium.net/ или https://bell-sw.com/",
                 installCause
         );
+    }
+
+    /**
+     * Java для первого запуска Rustcraft — с jdk.compiler (см. JavaDownloadService.sourceLaunchJava).
+     * Без неё Rustcraft падает с «InternalError» на подготовке данных при каждом запуске.
+     */
+    private String rustcraftSourceJava(String gameJava) throws Exception {
+        long t0 = System.currentTimeMillis(), b0 = Http.DOWNLOADED.get();
+        launchPhase = "java";
+        javaPercent = -1;
+        try {
+            String java = javaDownloadService.sourceLaunchJava(gameJava,
+                    msg -> Platform.runLater(() -> log(msg)),
+                    new Http.Progress() {
+                        @Override
+                        public void update(long done, long total) {
+                            if (total <= 0) return;
+                            int pct = (int) (100L * done / total);
+                            if (pct == javaPercent) return;
+                            javaPercent = pct;
+                            setHomeProgress(done / (double) total, "Скачиваю Java для Rustcraft · "
+                                    + (done >> 20) + " из " + (total >> 20) + " МБ · это один раз, не закрывайте лаунчер");
+                            setPlayButtonBusy("Java · " + pct + "%");
+                        }
+
+                        @Override
+                        public void reconnecting(long waitMs) {
+                            javaPercent = -1;
+                            setHomeProgress(-1, "Связь прервалась — переподключаюсь, скачанное не пропадёт…");
+                        }
+                    });
+            boolean dl = Http.DOWNLOADED.get() > b0;
+            String src = !dl ? "have" : javaDownloadService.lastFailTag().contains("m:") ? "jdk" : "m";
+            stat("rustcraft_java", "ok src=" + src + " sec=" + (System.currentTimeMillis() - t0) / 1000
+                    + " mb=" + (Http.DOWNLOADED.get() - b0) / 1_048_576);
+            log("[RUSTCRAFT] Java для подготовки данных: " + java);
+            launchPhase = "loader";   // при ошибке остаётся «java» — launch_fail покажет jv=…
+            return java;
+        } catch (Exception e) {
+            stat("rustcraft_java", "fail tags=" + javaDownloadService.lastFailTag());
+            throw e;
+        }
     }
 
     private int[] buildFallbackChain(int required, int max) {
@@ -6263,15 +6533,32 @@ public class MainController {
         // пока идёт загрузка — и архив шейдера уезжал в resourcepacks/<сборка>/ и записывался
         // в .installed.json ТОЙ папки. Соседний loader снимался правильно, а тип — нет.
         final String contentType = activeContentType;
+        final List<String> gameVersions = new ArrayList<>(buildVersionCombo.getItems());
+        final List<String> buildLoaders = new ArrayList<>(buildLoaderCombo.getItems());
         executor.submit(() -> {
             try {
                 String versionId = modrinthService.resolveBestVersion(mod.getProjectId(), mcVersion, loader);
                 if (versionId == null) {
                     stat("mod_add", "no_version type=" + contentType + " mc=" + mcVersion
                             + (loader == null ? "" : " loader=" + loader));
+                    String[] fit = null;
+                    if ("mod".equals(contentType)) {
+                        try {
+                            fit = bestBuildForMod(mod.getProjectId(), gameVersions, buildLoaders);
+                        } catch (Exception ignored) {
+                            // не узнали — остаётся подсказка по данным поиска
+                        }
+                    }
+                    String[] fits = fit;
                     Platform.runLater(() -> {
                         log("[MODS] Нет подходящей версии \"" + mod.getTitle() + "\" для " + mcVersion + " " + loader);
                         hideRowProgress(sourceButton, true);
+                        // Та же пара, что у сборки, — значит, файл есть, но не подошёл по другой причине:
+                        // предлагать её же было бы кругом.
+                        if (fits != null && !(fits[0].equals(mcVersion) && fits[1].equals(loader))) {
+                            offerBuildWhereModFits(mod, build, loader, fits);
+                            return;
+                        }
                         // Раньше только в журнал, который свёрнут: «+» снова становился активным, и со
                         // стороны это выглядело как «нажал — ничего». 21.10.2026 новички уходили как
                         // раз с экрана «Моды», не поставив ни одного мода.
@@ -6389,9 +6676,13 @@ public class MainController {
                     msg -> Platform.runLater(() -> log("[MODS] " + msg)),
                     progress == null ? null : progress.part(files - 1, files));
             stat("mod_add", "ok type=" + contentType + " deps=" + deps.size());
+            boolean addedFabricApi = "mod".equals(contentType) && ensureFabricApi(build);
             Platform.runLater(() -> {
                 hideRowProgress(sourceButton, false);
                 log("[MODS] Установлено в «" + build.getName() + "»: " + mod.getTitle());
+                if (addedFabricApi) {
+                    showToast("Вместе с «" + mod.getTitle() + "» поставлен Fabric API — без него мод не запустится", "info");
+                }
                 if (!deps.isEmpty()) {
                     if (failedDeps.isEmpty()) {
                         showToast("«" + mod.getTitle() + "» и нужные ему моды (" + deps.size() + ") установлены", "success");
@@ -6399,6 +6690,7 @@ public class MainController {
                         showToast("Не удалось скачать: " + String.join(", ", failedDeps) + " — без них игра может не запуститься", "error");
                     }
                 }
+                if ("mod".equals(contentType)) hintPlayAfterMods(build);
                 if (sourceButton != null) {
                     // An icon, not a "✓" character: the bundled faces have no U+2713.
                     FontIcon done = new FontIcon("fth-check");
@@ -6414,6 +6706,30 @@ public class MainController {
                 hideRowProgress(sourceButton, true);
                 showToast(modInstallFailHint(mod, ex), "error");
             });
+        }
+    }
+
+    /** Fabric API на Modrinth. */
+    private static final String FABRIC_API_PROJECT = "P7dR8mSH";
+
+    /**
+     * Ставит Fabric API в Fabric/Quilt-сборку, если моду в ней он нужен (по fabric.mod.json), а его
+     * нет — до первого вылета, а не после (ModDoctor.needsFabricApi). Из фонового потока. true — поставлен.
+     */
+    private boolean ensureFabricApi(Profile build) {
+        String loader = build.getModLoader() == null ? "" : build.getModLoader().toLowerCase(java.util.Locale.ROOT);
+        if (!loader.equals("fabric") && !loader.equals("quilt")) return false;
+        try {
+            if (!ModDoctor.needsFabricApi(modrinthService.contentDir("mod", build.getName()))) return false;
+            String v = modrinthService.resolveBestVersion(FABRIC_API_PROJECT, build.getVersionId(), "fabric");
+            if (v == null) return false;
+            modrinthService.downloadContent(v, build.getName(), "mod", FABRIC_API_PROJECT, "Fabric API",
+                    msg -> Platform.runLater(() -> log("[MODS] " + msg)));
+            stat("mod_add", "auto_fabric_api mc=" + build.getVersionId());
+            return true;
+        } catch (Exception e) {
+            Platform.runLater(() -> log("[MODS] Не удалось поставить Fabric API: " + e.getMessage()));
+            return false;
         }
     }
 
@@ -6675,13 +6991,24 @@ public class MainController {
      */
     private void startModpackInstallFromModrinth(ModInfo mod, Button sourceButton) {
         if (sourceButton != null) sourceButton.setDisable(true);
-        FxProgress rowProgress = showRowProgress(sourceButton);
-        if (rowProgress != null) rowProgress.indeterminate();
         log("[MODPACK] Загрузка архива «" + mod.getTitle() + "»...");
         // Отметки модпака (25.10.2026): 38c28a8f сделал 15 поисков модпаков и ушёл, а нажимал ли он
         // «+», открывал ли окно установки и что там случилось — статистика не видела вообще.
         stat("modpack", "click src=modrinth");
         long clickAt = System.currentTimeMillis();
+        // Окно сразу, а не после загрузки архива (28.10.2026): у 3aec706a 206-мегабайтный архив
+        // шёл 400 секунд, и всё это время о модпаке была только полоска на кнопке «+».
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        ModpackFetchWindow fetch = showModpackFetchWindow(mod, () -> {
+            cancelled.set(true);
+            stat("modpack", "fetch_cancel after=" + (System.currentTimeMillis() - clickAt) / 1000 + "s");
+            if (sourceButton != null) sourceButton.setDisable(false);
+        });
+        Http.Progress shown = fetch.progress.bytes();
+        Http.Progress bytes = (done, total) -> {
+            if (cancelled.get()) throw new java.util.concurrent.CancellationException("отменено");
+            shown.update(done, total);
+        };
         executor.submit(() -> {
             Path archive = null;
             try {
@@ -6690,8 +7017,11 @@ public class MainController {
                 String versionId = modrinthService.resolveBestVersion(mod.getProjectId(), null, null);
                 if (versionId == null) throw new IOException("У этой сборки на Modrinth нет ни одной версии");
                 archive = modrinthService.downloadModpackArchive(versionId,
-                        msg -> Platform.runLater(() -> log("[MODPACK] " + msg)),
-                        rowProgress == null ? null : rowProgress.bytes());
+                        msg -> Platform.runLater(() -> log("[MODPACK] " + msg)), bytes);
+                if (cancelled.get()) {
+                    deleteTempArchive(archive);
+                    return;
+                }
                 ModpackService.PackInfo info = modpackService.read(archive);
                 // The archive lives in %TEMP% under a generated name, so the catalogue entry the
                 // player actually clicked is a far better description than that file name.
@@ -6702,19 +7032,96 @@ public class MainController {
                 if (info.summary.isBlank() && mod.getDescription() != null) info.summary = mod.getDescription();
                 Path ready = archive;
                 Platform.runLater(() -> {
-                    hideRowProgress(sourceButton, true);
+                    fetch.close.run();
+                    if (sourceButton != null) sourceButton.setDisable(false);
+                    if (cancelled.get()) {
+                        deleteTempArchive(ready);
+                        return;
+                    }
                     openModpackSummary(info, ready, true);
                 });
             } catch (Exception ex) {
                 deleteTempArchive(archive);
+                if (cancelled.get()) return;   // сам нажал «Отмена» — окно уже закрыто
                 stat("modpack", "dl_fail exc=" + ex.getClass().getSimpleName());
                 Platform.runLater(() -> {
-                    hideRowProgress(sourceButton, true);
+                    fetch.close.run();
+                    if (sourceButton != null) sourceButton.setDisable(false);
                     log("[MODPACK] Не удалось получить сборку: " + ex.getMessage());
                     showToast("Не удалось скачать сборку: " + ex.getMessage(), "warning");
                 });
             }
         });
+    }
+
+    private record ModpackFetchWindow(FxProgress progress, Runnable close) {}
+
+    /** Окно «Скачиваю модпак»: название, иконка, шкала в байтах и «Отмена» (onCancel вызывается один раз). */
+    private ModpackFetchWindow showModpackFetchWindow(ModInfo mod, Runnable onCancel) {
+        StackPane scrim = new StackPane();
+        scrim.getStyleClass().add("modal-scrim");
+        VBox card = new VBox(0);
+        card.getStyleClass().add("modal-card");
+        card.setPrefWidth(520);
+        card.setMaxWidth(520);
+        card.setMaxHeight(Region.USE_PREF_SIZE);
+        card.setPickOnBounds(true);
+
+        HBox header = new HBox();
+        header.getStyleClass().add("modal-header");
+        header.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label("Модпак с Modrinth");
+        title.getStyleClass().add("modal-title");
+        header.getChildren().add(title);
+
+        Label packName = new Label(mod.getTitle());
+        packName.getStyleClass().add("panel-title");
+        packName.setWrapText(true);
+        VBox nameBox = new VBox(4, packName);
+        if (mod.getDescription() != null && !mod.getDescription().isBlank()) {
+            Label summary = new Label(mod.getDescription());
+            summary.getStyleClass().add("page-sub");
+            summary.setWrapText(true);
+            nameBox.getChildren().add(summary);
+        }
+        HBox.setHgrow(nameBox, Priority.ALWAYS);
+        HBox titleRow = new HBox(12, buildModpackIcon(mod.getIconUrl() == null ? "" : mod.getIconUrl()), nameBox);
+        titleRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label hint = new Label("Скачиваю архив сборки — после этого покажу, что в ней, и спрошу, ставить ли. "
+                + "Большие модпаки на медленном интернете качаются несколько минут.");
+        hint.getStyleClass().add("toggle-sub");
+        hint.setWrapText(true);
+        ProgressBar bar = new ProgressBar(ProgressBar.INDETERMINATE_PROGRESS);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(bar, Priority.ALWAYS);
+        Label numbers = new Label("");
+        numbers.getStyleClass().addAll("toggle-sub", "mono");
+        numbers.setMinWidth(Region.USE_PREF_SIZE);
+        HBox barRow = new HBox(8, bar, numbers);
+        barRow.setAlignment(Pos.CENTER_LEFT);
+        VBox body = new VBox(12, titleRow, hint, barRow);
+        body.setPadding(new javafx.geometry.Insets(16));
+
+        Button cancel = new Button("Отмена");
+        cancel.getStyleClass().add("copy-btn");
+        HBox footer = new HBox(cancel);
+        footer.setPadding(new javafx.geometry.Insets(0, 16, 16, 16));
+        footer.setAlignment(Pos.CENTER_RIGHT);
+
+        card.getChildren().addAll(header, body, footer);
+        scrim.getChildren().add(card);
+        overlayLayer.getChildren().add(scrim);
+        showOverlay(scrim);
+        Runnable close = () -> {
+            if (!overlayLayer.getChildren().remove(scrim)) return;
+            hideOverlay(scrim);
+        };
+        cancel.setOnAction(e -> {
+            close.run();
+            onCancel.run();
+        });
+        return new ModpackFetchWindow(new FxProgress(bar, numbers, FxProgress.Style.BYTES), close);
     }
 
     /**
@@ -9940,6 +10347,14 @@ public class MainController {
                 // The site answered fine and simply has nothing for this player: a hint, not an error.
                 Platform.runLater(() -> showToast(e.getMessage(), "info"));
             } catch (Exception e) {
+                // 28.10.2026 у 1e7d2840 и cdda98cc скин не скачался четыре раза подряд, а в статистике
+                // была только строка кода тоста. Теперь — сайт, класс ошибки и HTTP-код; ник не шлём.
+                java.util.regex.Matcher code = java.util.regex.Pattern.compile("\\b([1-5]\\d\\d)\\b")
+                        .matcher(String.valueOf(e.getMessage()));
+                // event.php оставляет в detail только A-Za-z0-9_ .:=- — подпись «по ссылке» по-русски станет «url».
+                String src = label.replaceAll("[^A-Za-z0-9._-]", "");
+                stat("skin_fail", "src=" + (src.isEmpty() ? "url" : src) + " cape=" + (cape ? 1 : 0)
+                        + " exc=" + e.getClass().getSimpleName() + (code.find() ? " http=" + code.group(1) : ""));
                 Platform.runLater(() -> showToast(tr("profile_source_failed") + ": " + e.getMessage(), "error"));
             } finally {
                 Platform.runLater(() -> setProfileSourcesBusy(false));
@@ -10722,25 +11137,66 @@ public class MainController {
         }
     }
 
+    /** «loader версия», чей запуск упал на нехватке/порче файлов: следующий запуск сверит библиотеки. */
+    private volatile String repairLibsFor;
+
+    /** Больше — самые старые уходят: сообщения об ошибках теперь висят, пока их не закроют. */
+    private static final int MAX_TOASTS = 4;
+
+    /**
+     * Сообщение в правом нижнем углу окна с крестиком. Ошибки и предупреждения висят, пока их не
+     * закроют, остальное уходит само через 8 секунд (пока над ним мышь — ждёт). 28.10.2026 владелец:
+     * за прежние 3 секунды по центру внизу длинную ошибку было не дочитать.
+     */
     private void showToast(String message, String type) {
+        showToast(message, type, null, null);
+    }
+
+    /** То же, с кнопкой действия перед крестиком (actionLabel/onAction — null, если не нужна). */
+    private void showToast(String message, String type, String actionLabel, Runnable onAction) {
         if ("error".equals(type) || "warning".equals(type)) statShownMessage(type);
-        Label toast = new Label(message);
+        Label text = new Label(message);
+        text.getStyleClass().add("toast-text");
+        text.setWrapText(true);
+        text.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(text, Priority.ALWAYS);
+        Button close = new Button();
+        close.getStyleClass().add("toast-close");
+        close.setGraphic(new FontIcon("fth-x"));
+        close.setFocusTraversable(false);
+        HBox toast = new HBox(10, text, close);
+        Button action = null;
+        if (actionLabel != null && onAction != null) {
+            action = new Button(actionLabel);
+            action.getStyleClass().add("toast-action");
+            action.setMinWidth(Region.USE_PREF_SIZE);
+            action.setFocusTraversable(false);
+            toast.getChildren().add(1, action);
+        }
+        toast.setAlignment(Pos.TOP_LEFT);
         toast.getStyleClass().addAll("toast", "toast-" + type);
-        toast.setWrapText(true);
-        toastStack.getChildren().add(toast);
-        Motion.toastIn(toast);
-        overlayLayer.setVisible(true);
-        overlayLayer.setManaged(true);
-        javafx.animation.PauseTransition hide = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(3));
-        hide.setOnFinished(e -> {
+        Runnable remove = () -> {
             toastStack.getChildren().remove(toast);
             boolean anyOpen = overlayLayer.getChildren().stream().anyMatch(c -> c != toastStack && c.isVisible());
             if (!anyOpen && toastStack.getChildren().isEmpty()) {
                 overlayLayer.setVisible(false);
                 overlayLayer.setManaged(false);
             }
-        });
-        hide.play();
+        };
+        close.setOnAction(e -> remove.run());
+        if (action != null) action.setOnAction(e -> { remove.run(); onAction.run(); });
+        while (toastStack.getChildren().size() >= MAX_TOASTS) toastStack.getChildren().remove(0);
+        toastStack.getChildren().add(toast);
+        Motion.toastIn(toast);
+        overlayLayer.setVisible(true);
+        overlayLayer.setManaged(true);
+        if (!"error".equals(type) && !"warning".equals(type)) {
+            javafx.animation.PauseTransition hide = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(8));
+            hide.setOnFinished(e -> remove.run());
+            toast.setOnMouseEntered(e -> hide.pause());
+            toast.setOnMouseExited(e -> hide.playFromStart());
+            hide.play();
+        }
     }
 
     /**
@@ -11151,6 +11607,8 @@ public class MainController {
     @FXML
     private void onOpenCreateBuild() {
         editingBuild = null;
+        modRefineToken = null;
+        createBuildConfirmBtn.setDisable(false);
         createBuildModalTitle.setText("Новая сборка");
         buildNameField.clear();
         buildNameField.setDisable(false);
@@ -11177,6 +11635,8 @@ public class MainController {
      *  and the installed mods list are all editable. */
     private void onOpenEditBuild(Profile profile) {
         editingBuild = profile;
+        modRefineToken = null;
+        createBuildConfirmBtn.setDisable(false);
         createBuildModalTitle.setText("Редактировать сборку");
         buildNameField.setText(profile.getName());
         buildNameField.setDisable(true);
@@ -11510,37 +11970,31 @@ public class MainController {
         String shownLoader = buildLoaderCombo.getSelectionModel().getSelectedItem();
         List<String> gameVersions = new ArrayList<>(buildVersionCombo.getItems());
         List<String> loaders = new ArrayList<>(buildLoaderCombo.getItems());
+        // «Создать» ждёт ответа Modrinth: 27.10.2026 120bf4ff нажал её через 8 секунд, раньше, чем
+        // пришёл список файлов мода, — сборка создалась по неточным данным поиска (Forge 1.21.1),
+        // мод в неё не встал, и новичок ушёл. runLater — чтобы встать после onOpenCreateBuild,
+        // который сам выставляет текст кнопки.
+        Object token = new Object();
+        modRefineToken = token;
+        Platform.runLater(() -> setCreateBuildWaiting(token, true));
+        // Modrinth не ответил за 15 с — не держим окно запертым.
+        javafx.animation.PauseTransition limit = new javafx.animation.PauseTransition(Duration.seconds(15));
+        limit.setOnFinished(e -> setCreateBuildWaiting(token, false));
+        limit.play();
         executor.submit(() -> {
-            Map<String, java.util.Set<String>> loadersByGame = new HashMap<>();
+            String[] best;
             try {
-                for (var el : modrinthService.listVersions(mod.getProjectId(), null, null)) {
-                    var v = el.getAsJsonObject();
-                    if (!v.has("game_versions") || !v.has("loaders")) continue;
-                    for (var gv : v.getAsJsonArray("game_versions")) {
-                        var set = loadersByGame.computeIfAbsent(gv.getAsString(), k -> new java.util.HashSet<>());
-                        for (var l : v.getAsJsonArray("loaders")) set.add(l.getAsString());
-                    }
-                }
+                best = bestBuildForMod(mod.getProjectId(), gameVersions, loaders);
             } catch (Exception e) {
-                return;   // нет сети — остаётся выбор по данным поиска
+                best = null;   // нет сети — остаётся выбор по данным поиска
             }
-            String bestVersion = null, bestLoader = null;
-            search:
-            for (String gv : gameVersions) {
-                java.util.Set<String> have = loadersByGame.get(gv);
-                if (have == null) continue;
-                if (have.contains("quilt")) have.add("fabric");
-                for (String l : List.of("fabric", "neoforge", "forge")) {
-                    if (have.contains(l) && loaders.contains(l)) {
-                        bestVersion = gv;
-                        bestLoader = l;
-                        break search;
-                    }
-                }
+            if (best == null) {
+                Platform.runLater(() -> setCreateBuildWaiting(token, false));
+                return;
             }
-            if (bestVersion == null) return;
-            String v = bestVersion, l = bestLoader;
+            String v = best[0], l = best[1];
             Platform.runLater(() -> {
+                setCreateBuildWaiting(token, false);
                 if (pendingModForNewBuild != mod || editingBuild != null || !createBuildOverlay.isVisible()) return;
                 if (!java.util.Objects.equals(buildVersionCombo.getSelectionModel().getSelectedItem(), shownVersion)
                         || !java.util.Objects.equals(buildLoaderCombo.getSelectionModel().getSelectedItem(), shownLoader)) return;
@@ -11550,6 +12004,72 @@ public class MainController {
                 log("[BUILDS] Под «" + mod.getTitle() + "» выбрано " + l + " " + v + " — для неё у мода есть файл");
             });
         });
+    }
+
+    /** Подбор версии под мод, которого ждёт кнопка «Создать»; null — никто не ждёт. */
+    private Object modRefineToken;
+
+    private void setCreateBuildWaiting(Object token, boolean waiting) {
+        if (token != modRefineToken) return;
+        if (!waiting) modRefineToken = null;
+        createBuildConfirmBtn.setDisable(waiting);
+        createBuildConfirmBtn.setText(waiting ? "Подбираю версию…" : "Создать");
+    }
+
+    /**
+     * Самая новая версия игры из {@code gameVersions} (по порядку списка) и загрузчик Fabric /
+     * NeoForge / Forge, для которых у проекта на Modrinth действительно есть файл; Quilt считается
+     * за Fabric. Нет такой пары — null. Сеть: исключение наружу.
+     */
+    private String[] bestBuildForMod(String projectId, List<String> gameVersions, List<String> loaders) throws Exception {
+        Map<String, java.util.Set<String>> loadersByGame = new HashMap<>();
+        for (var el : modrinthService.listVersions(projectId, null, null)) {
+            var v = el.getAsJsonObject();
+            if (!v.has("game_versions") || !v.has("loaders")) continue;
+            for (var gv : v.getAsJsonArray("game_versions")) {
+                var set = loadersByGame.computeIfAbsent(gv.getAsString(), k -> new java.util.HashSet<>());
+                for (var l : v.getAsJsonArray("loaders")) set.add(l.getAsString());
+            }
+        }
+        for (String gv : gameVersions) {
+            java.util.Set<String> have = loadersByGame.get(gv);
+            if (have == null) continue;
+            if (have.contains("quilt")) have.add("fabric");
+            for (String l : List.of("fabric", "neoforge", "forge")) {
+                if (have.contains(l) && loaders.contains(l)) return new String[] {gv, l};
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Мода нет под эту сборку — предлагаем сразу сборку, где он есть, вместо одного «нет версии».
+     * 27.10.2026 120bf4ff трижды получил «нет версии» в двух сборках подряд и ушёл, так и не
+     * узнав, под что мод вообще есть.
+     */
+    private void offerBuildWhereModFits(ModInfo mod, Profile build, String loader, String[] fit) {
+        String text = "«" + mod.getTitle() + "» нет для " + build.getVersionId()
+                + (loader == null || "vanilla".equals(loader) ? "" : " " + loader)
+                + ". Он есть для " + fit[1] + " " + fit[0] + " — создать сборку под эту версию и поставить мод в неё?";
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION);
+        ask.initOwner(primaryStage);
+        ask.setTitle("BLauncher");
+        ask.setHeaderText("Мод не подходит к сборке «" + build.getName() + "»");
+        ask.setContentText(text);
+        ButtonType create = new ButtonType("Создать сборку", ButtonBar.ButtonData.OK_DONE);
+        ButtonType no = new ButtonType("Не надо", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ask.getButtonTypes().setAll(create, no);
+        stat("mod_fit_offer", fit[1] + " " + fit[0]);
+        if (ask.showAndWait().orElse(no) != create) return;
+        stat("mod_fit_accept", fit[1] + " " + fit[0]);
+        pendingModForNewBuild = mod;
+        onOpenCreateBuild();
+        // Пара уже точная — подбор по поиску и ожидание кнопки не нужны.
+        modRefineToken = null;
+        createBuildConfirmBtn.setDisable(false);
+        createBuildConfirmBtn.setText("Создать");
+        buildVersionCombo.getSelectionModel().select(fit[0]);
+        buildLoaderCombo.getSelectionModel().select(fit[1]);
     }
 
     @FXML
@@ -11623,12 +12143,7 @@ public class MainController {
             goToView("home");
             showToast("Сборка «" + profile.getName() + "» создана — нажмите «Играть». Первый запуск скачает игру, "
                     + "это пара минут; моды можно добавить в разделе «Моды»", "success");
-            javafx.animation.ScaleTransition pulse = new javafx.animation.ScaleTransition(Duration.millis(380), playButton);
-            pulse.setFromX(1); pulse.setFromY(1);
-            pulse.setToX(1.06); pulse.setToY(1.06);
-            pulse.setAutoReverse(true);
-            pulse.setCycleCount(4);
-            pulse.play();
+            pulsePlayButton();
         } else {
             showToast("Сборка «" + profile.getName() + "» создана", "success");
         }
@@ -11641,6 +12156,38 @@ public class MainController {
             pendingModForNewBuild = null;
             installModIntoBuild(queuedMod, profile, null);
         }
+    }
+
+    private void pulsePlayButton() {
+        javafx.animation.ScaleTransition pulse = new javafx.animation.ScaleTransition(Duration.millis(380), playButton);
+        pulse.setFromX(1); pulse.setFromY(1);
+        pulse.setToX(1.06); pulse.setToY(1.06);
+        pulse.setAutoReverse(true);
+        pulse.setCycleCount(4);
+        pulse.play();
+    }
+
+    /** Подсказку «моды добавлены — теперь Играть» показываем один раз за сессию. */
+    private boolean playHintAfterModsShown;
+
+    /**
+     * После первого добавленного мода, если «Играть» ещё не нажимали. 28.10.2026 новичок 41baf131
+     * создал Forge 1.20.1, положил семь модов, пять минут ходил по меню и ушёл, так и не запустив
+     * игру: тост «нажмите Играть» после создания сборки он видел, но ушёл в «Моды», а оттуда к
+     * кнопке не вернулся. Здесь — кнопка, которая сама ведёт к «Играть».
+     */
+    private void hintPlayAfterMods(Profile build) {
+        if (playClicked || playHintAfterModsShown) return;
+        playHintAfterModsShown = true;
+        showToast("Мод добавлен в «" + build.getName() + "». Добавите всё, что нужно, — возвращайтесь на главную "
+                + "и нажимайте «Играть»: моды подхватятся сами", "success", "К «Играть»", () -> {
+            stat("play_hint", "mods");
+            selectedBuild = build;
+            selectedServer = null;
+            goToView("home");
+            renderCurrentBuildPanel();
+            pulsePlayButton();
+        });
     }
 
     /** Card icon background gradients — matches the small fixed palette used throughout
@@ -12721,8 +13268,21 @@ public class MainController {
             return;
         }
         boolean scriptFailed = Files.exists(UPDATE_FAILED);
+        // Что успел скрипт замены (буквы шагов, см. UpdateService.buildSelfReplaceScript) и остался ли
+        // скачанный jar: скрипт удаляет его последней строкой, лежит — значит, скрипт не дошёл до конца
+        // или не запускался вовсе. 28.10.2026: no_restart без метки «locked» ни о чём не говорил.
+        Path traceFile = UPDATE_FAILED.resolveSibling(UpdateService.UPDATE_TRACE_FILE);
+        String trace = "";
+        try {
+            if (Files.exists(traceFile)) trace = Files.readString(traceFile).replaceAll("\\s+", "");
+        } catch (Exception ignored) { }
+        boolean stagedLeft = false;
+        try (var left = Files.list(UPDATE_STAGED_DIR)) {
+            stagedLeft = left.anyMatch(f -> f.getFileName().toString().endsWith(".jar"));
+        } catch (Exception ignored) { }
         try { Files.deleteIfExists(UPDATE_PENDING); } catch (Exception ignored) { }
         try { Files.deleteIfExists(UPDATE_FAILED); } catch (Exception ignored) { }
+        try { Files.deleteIfExists(traceFile); } catch (Exception ignored) { }
         String[] p = pending.split(" ");
         if (p.length < 3) return;
         long at;
@@ -12736,7 +13296,8 @@ public class MainController {
             stat("update_ok", from + "-" + to + tag);
             return;
         }
-        stat("update_fail", from + "-" + to + " reason=" + (scriptFailed ? "locked" : "no_restart") + tag);
+        stat("update_fail", from + "-" + to + " reason=" + (scriptFailed ? "locked" : "no_restart") + tag
+                + " trace=" + (trace.isEmpty() ? "none" : trace) + (stagedLeft ? " staged=1" : ""));
         if (silent) silentUpdateFailed = true;
         Platform.runLater(() -> showToast("Обновление до " + to + " не установилось: Windows не дала заменить файл "
                 + "лаунчера — чаще всего его держит антивирус. Перезагрузите компьютер и нажмите «Обновить» ещё раз "
@@ -12808,6 +13369,7 @@ public class MainController {
             // Итог проверит и отправит в статистику следующий запуск (reportPreviousUpdate).
             Files.createDirectories(UPDATE_PENDING.getParent());
             Files.deleteIfExists(UPDATE_FAILED);
+            Files.deleteIfExists(UPDATE_FAILED.resolveSibling(UpdateService.UPDATE_TRACE_FILE));
             Files.writeString(UPDATE_PENDING, LAUNCHER_VERSION + " " + to + " " + System.currentTimeMillis() + " silent");
             updateService.applyUpdateOnExit(staged, resolveCurrentExecutablePath(), UPDATE_FAILED);
         } catch (Exception e) {
@@ -12888,6 +13450,7 @@ public class MainController {
                 // и событие не успело бы уйти.
                 Files.createDirectories(UPDATE_PENDING.getParent());
                 Files.deleteIfExists(UPDATE_FAILED);
+                Files.deleteIfExists(UPDATE_FAILED.resolveSibling(UpdateService.UPDATE_TRACE_FILE));
                 Files.writeString(UPDATE_PENDING, LAUNCHER_VERSION + " " + pendingUpdateManifest.latestVersion
                         + " " + System.currentTimeMillis());
                 try {
@@ -13075,6 +13638,7 @@ public class MainController {
      */
     public void reportCloseIfInGame() {
         try {
+            flushUiClicks(true);
             if (onlineStatsService != null && gameLaunchService != null && gameLaunchService.isGameRunning()) {
                 onlineStatsService.eventNow("closed_in_game", "");
             } else if (onlineStatsService != null) {
@@ -13093,6 +13657,83 @@ public class MainController {
                         + " idle=" + (now - lastStatAt) / 1000 + " msgs=" + msgStats);
             }
         } catch (Exception ignored) { }
+    }
+
+    /** Ловит нажатия во всём окне — кнопки, переключатели, списки, флажки, кликабельные карточки. */
+    private void installUiClickTracker() {
+        if (primaryStage == null) return;
+        primaryStage.addEventFilter(javafx.event.ActionEvent.ACTION, e -> {
+            if (e.getTarget() instanceof Node n) countUiClick(n, true);
+        });
+        primaryStage.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, e -> {
+            if (!(e.getTarget() instanceof Node n)) return;
+            // Карточки и плитки, у которых свой onMouseClicked; кнопки уже посчитаны через ACTION.
+            for (Node p = n; p != null; p = p.getParent()) {
+                if (p instanceof javafx.scene.control.ButtonBase || p instanceof javafx.scene.control.ComboBoxBase<?>
+                        || p instanceof javafx.scene.control.TextInputControl) return;
+                if (p.getOnMouseClicked() != null || p.getOnMousePressed() != null) {
+                    countUiClick(p, false);
+                    return;
+                }
+            }
+        });
+    }
+
+    private void countUiClick(Node node, boolean action) {
+        String key = uiKey(node);
+        if (key == null) return;
+        // Состояние после нажатия — у переключателей и флажков; у списков — номер выбранного пункта
+        // (не текст: в списках бывают названия сборок и ники).
+        if (node instanceof CheckBox cb) key += cb.isSelected() ? "=1" : "=0";
+        else if (node instanceof ToggleButton tb && !(node.getStyleClass().contains("nav-button"))) key += tb.isSelected() ? "=1" : "=0";
+        else if (node instanceof ComboBox<?> c) key += "=" + c.getSelectionModel().getSelectedIndex();
+        else if (!action) key = "c." + key;   // карточка, а не кнопка
+        synchronized (uiClicks) {
+            if (uiClicks.size() < 40 || uiClicks.containsKey(key)) uiClicks.merge(key, 1, Integer::sum);
+        }
+    }
+
+    /** fx:id элемента, иначе «fx:id ближайшего родителя.первый стиль». null — нечего назвать. */
+    private static String uiKey(Node node) {
+        if (node.getId() != null && !node.getId().isBlank()) return node.getId();
+        String kind = node.getStyleClass().isEmpty() ? node.getClass().getSimpleName() : node.getStyleClass().get(0);
+        for (Node p = node.getParent(); p != null; p = p.getParent()) {
+            if (p.getId() != null && !p.getId().isBlank()) return p.getId() + "." + kind;
+        }
+        return null;
+    }
+
+    /**
+     * Отправляет накопленные нажатия экрана: «ui screen a:2 b c.card flag=1 combo=3» (event.php пропускает только A-Za-z0-9_ .:=-). detail на сервере режется
+     * до 120 символов — длинный список уходит несколькими событиями (part=2…).
+     */
+    private void flushUiClicks(boolean now) {
+        String screen = currentScreen == null ? "start" : currentScreen;
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        synchronized (uiClicks) {
+            if (uiClicks.isEmpty()) return;
+            for (var e : uiClicks.entrySet()) parts.add(e.getValue() > 1 ? e.getKey() + ":" + e.getValue() : e.getKey());
+            uiClicks.clear();
+        }
+        StringBuilder chunk = new StringBuilder();
+        int part = 1;
+        for (String p : parts) {
+            String head = screen + (part > 1 ? " part=" + part : "") + " ";
+            if (chunk.length() > 0 && head.length() + chunk.length() + 1 + p.length() > 118) {
+                sendUi(head + chunk, now);
+                chunk.setLength(0);
+                part++;
+            }
+            if (chunk.length() > 0) chunk.append(' ');
+            chunk.append(p);
+        }
+        if (chunk.length() > 0) sendUi(screen + (part > 1 ? " part=" + part : "") + " " + chunk, now);
+    }
+
+    private void sendUi(String detail, boolean now) {
+        if (uiStats++ >= 120 || onlineStatsService == null) return;   // потолок на сессию, как у screen
+        if (now) onlineStatsService.eventNow("ui", detail);
+        else stat("ui", detail);
     }
 
     /** msa — вход через Microsoft, nick — задан ник для офлайна, none — ни того ни другого. */
@@ -13114,7 +13755,8 @@ public class MainController {
             // os= — 21.10.2026 Linux-архив скачали, а запустили ли его, по отметкам было не понять:
             // отметки Linux- и Windows-лаунчера ничем не отличались.
             stat("session", "acc=" + accountKind() + " builds=" + own + " versions=" + installed
-                    + " os=" + (Os.isWindows() ? "windows" : Os.isLinux() ? "linux" : Os.isMac() ? "mac" : "other"));
+                    + " os=" + (Os.isWindows() ? "windows" : Os.isLinux() ? "linux" : Os.isMac() ? "mac" : "other")
+                    + (homeRustSelected() ? " engine=rust" : ""));
             if (installed == 0) maybeStartPrefetch();
         });
         later.play();
@@ -13139,7 +13781,7 @@ public class MainController {
     private void maybeStartPrefetch() {
         if (prefetchThread != null || gameStarting || playClicked) return;
         String v = selectedBuild != null && !selectedBuild.isVanillaEntry() ? selectedBuild.getVersionId()
-                : homeVanillaVersionCombo.getSelectionModel().getSelectedItem();
+                : homeVanillaVersion();
         if (v == null || v.isBlank()) return;
         VersionDownloadService svc = new VersionDownloadService(gameDir);
         prefetchService = svc;

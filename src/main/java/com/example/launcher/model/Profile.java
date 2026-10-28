@@ -28,6 +28,9 @@ public class Profile {
     private long totalPlaytimeMinutes;
     /** Epoch millis of the last time this profile was launched; 0 if never. */
     private long lastLaunchedAt;
+    /** Когда начался последний запуск, закончившийся без вылета (epoch millis; 0 — не было).
+     *  По нему «Починка сборки» узнаёт моды, добавленные после того, как игра ещё работала. */
+    private long lastGoodLaunchAt;
     /** Epoch millis this profile was created; used as a fallback recency sort key. */
     private long createdAt;
     /** 2-3 letter/character label shown on the build card icon (e.g. "AT" for "All The Mods 10"). */
@@ -206,6 +209,14 @@ public class Profile {
 
     public void setLastLaunchedAt(long lastLaunchedAt) {
         this.lastLaunchedAt = lastLaunchedAt;
+    }
+
+    public long getLastGoodLaunchAt() {
+        return lastGoodLaunchAt;
+    }
+
+    public void setLastGoodLaunchAt(long lastGoodLaunchAt) {
+        this.lastGoodLaunchAt = lastGoodLaunchAt;
     }
 
     public long getCreatedAt() {

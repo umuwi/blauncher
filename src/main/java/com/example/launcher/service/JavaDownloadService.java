@@ -109,7 +109,11 @@ public class JavaDownloadService {
     public Path getJavaExecutable(int version) {
         Path versionDir = javaDir.resolve(String.valueOf(version));
         if (!Files.exists(versionDir)) return version == 21 ? ownRuntimeJava() : null;
+        return findJavaIn(versionDir);
+    }
 
+    private static Path findJavaIn(Path versionDir) {
+        if (!Files.exists(versionDir)) return null;
         // Прямой путь java.exe / java
         Path exe = versionDir.resolve("bin").resolve(isWindows() ? "java.exe" : "java");
         if (Files.exists(exe)) return exe;
@@ -210,14 +214,59 @@ public class JavaDownloadService {
             throws Exception {
         log.accept("[JAVA] Installing Java " + version + "...");
 
-        Path versionDir = javaDir.resolve(String.valueOf(version));
-
         // Проверяем, не установлена ли уже
         Path already = getJavaExecutable(version);
         if (already != null) {
             log.accept("[JAVA] Java " + version + " already installed");
             return already.toString();
         }
+        return install(String.valueOf(version), version, "jre-" + version, true, log, progress);
+    }
+
+    /**
+     * Java 25, которая умеет запускать программу прямо из исходника («java Файл.java»), — для
+     * Rustcraft: он один раз готовит данные игры своими ClientExtractor.java и т.п.
+     *
+     * <p>28.10.2026: у 11 из 17 игроков Rustcraft падал через 5–60 с с «InternalError» на каждом
+     * запуске. Это «java.lang.InternalError: Module jdk.compiler not in boot Layer»: в JRE 25 с
+     * нашего зеркала (и в JRE Adoptium) модуля jdk.compiler нет, а запуск из исходника без него
+     * невозможен. Данные не готовились, и всё повторялось. Обычной игре он не нужен, поэтому
+     * обычную jre-25 не трогаем: отдельная Java в java-runtime/25c — наша JRE + jdk.compiler
+     * (jlink, jre-25c-windows-x64.zip на зеркале), запасной — полный JDK с Adoptium.
+     *
+     * @param current Java, выбранная для игры (может быть null) — подходит, если в ней есть jdk.compiler
+     */
+    public String sourceLaunchJava(String current, Consumer<String> log, Http.Progress progress) throws Exception {
+        if (current != null && canRunSourceFiles(Path.of(current))) return current;
+        Path own = findJavaIn(javaDir.resolve("25c"));
+        if (own != null && canRunSourceFiles(own)) return own.toString();
+        log.accept("[JAVA] Для Rustcraft нужна Java 25 с компилятором (jdk.compiler) — скачиваю один раз");
+        return install("25c", 25, "jre-25c", false, log, progress);
+    }
+
+    /** В Java есть модуль jdk.compiler, то есть «java Файл.java» запустится. */
+    static boolean canRunSourceFiles(Path javaExe) {
+        if (javaExe == null || !Files.isRegularFile(javaExe)) return false;
+        try {
+            Process p = new ProcessBuilder(javaExe.toString(), "--list-modules").redirectErrorStream(true).start();
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            if (!p.waitFor(20, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0 && out.lines().anyMatch(l -> l.startsWith("jdk.compiler@"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Скачать и поставить Java в java-runtime/{dirName}: наше зеркало {mirrorName}-{ОС}-{арх},
+     * потом Adoptium (JRE — только если {@code jreOk}, затем JDK).
+     */
+    private String install(String dirName, int version, String mirrorName, boolean jreOk,
+                           Consumer<String> log, Http.Progress progress) throws Exception {
+        Path versionDir = javaDir.resolve(dirName);
 
         // Определяем платформу и архитектуру
         String os = System.getProperty("os.name").toLowerCase();
@@ -228,15 +277,14 @@ public class JavaDownloadService {
 
         String adoptium = "https://api.adoptium.net/v3/binary/latest/" + version + "/ga/"
                 + platform + "/" + archStr + "/%s/hotspot/normal/eclipse?project=jdk";
-        String mirror = MIRROR_BASE + "jre-" + version + "-" + platform + "-" + archStr + "." + osSuffix;
+        String mirror = MIRROR_BASE + mirrorName + "-" + platform + "-" + archStr + "." + osSuffix;
         // Третье поле — короткое имя источника для статистики (lastFailTag).
-        String[][] sources = {
-                {"blauncher.ru", mirror, "m"},
-                {"Adoptium JRE", String.format(adoptium, "jre"), "jre"},
-                {"Adoptium JDK", String.format(adoptium, "jdk"), "jdk"},
-        };
+        List<String[]> sources = new ArrayList<>();
+        sources.add(new String[]{"blauncher.ru", mirror, "m"});
+        if (jreOk) sources.add(new String[]{"Adoptium JRE", String.format(adoptium, "jre"), "jre"});
+        sources.add(new String[]{"Adoptium JDK", String.format(adoptium, "jdk"), "jdk"});
 
-        Path tempFile = Files.createTempFile("jre-" + version + "-", "." + osSuffix);
+        Path tempFile = Files.createTempFile("jre-" + dirName + "-", "." + osSuffix);
         String errors = "";
         List<String> tags = new ArrayList<>();
         lastFailTag = "";
@@ -292,12 +340,12 @@ public class JavaDownloadService {
             // папку, а удалённый файл висит «на удалении», и папка .part не удаляется — следующая попытка
             // спотыкалась уже о неё. Поэтому: своя временная папка на каждую попытку, перенос с
             // повторами, а если не вышло — копирование файлов вместо переноса.
-            cleanupOldStaging(version);
+            cleanupOldStaging(dirName);
             // Распаковка — до трёх раз, каждый раз в новую папку. 23.10.2026 (ac5cc6dc, 1.14.25):
             // антивирус запретил запись уже при распаковке («unpack:extract:AccessDenied»), и после
             // первой же ошибки новичок ушёл. Через несколько секунд проверка обычно заканчивается.
             for (int attempt = 1; ; attempt++) {
-                Path staging = javaDir.resolve(version + ".part" + System.currentTimeMillis());
+                Path staging = javaDir.resolve(dirName + ".part" + System.currentTimeMillis());
                 String step = "extract";
                 try {
                     Files.createDirectories(staging);
@@ -325,7 +373,7 @@ public class JavaDownloadService {
             Files.deleteIfExists(tempFile);
         }
 
-        Path javaExe = getJavaExecutable(version);
+        Path javaExe = findJavaIn(versionDir);
         if (javaExe == null) {
             throw new RuntimeException(
                 "JDK extracted, but java executable not found in " + versionDir.toAbsolutePath()
@@ -358,9 +406,9 @@ public class JavaDownloadService {
     }
 
     /** Остатки прошлых попыток (<версия>.part…); то, что ещё держит антивирус, оставляем до следующего раза. */
-    private void cleanupOldStaging(int version) {
+    private void cleanupOldStaging(String dirName) {
         try (var list = Files.list(javaDir)) {
-            for (Path p : list.filter(p -> p.getFileName().toString().startsWith(version + ".part")).toList()) {
+            for (Path p : list.filter(p -> p.getFileName().toString().startsWith(dirName + ".part")).toList()) {
                 try { deleteTree(p); } catch (IOException ignored) { }
             }
         } catch (IOException ignored) { }

@@ -188,6 +188,8 @@ public class ModLoaderService {
         // оборвалась на ConnectException, старый маркер остался, следующее «Играть» сочло Fabric
         // установленным и запустило игру по новому профилю без его библиотек — ClassNotFoundException.
         Files.deleteIfExists(profDir.resolve("fabric-" + mc + ".mainclass"));
+        InstallProgress progress = installProgress;
+        if (progress != null) progress.update(-1, "описание Fabric с meta.fabricmc.net");
         JsonObject profile;
         try {
             profile = vds.getFabricProfileJson(mc, fabricVer);
@@ -629,6 +631,16 @@ public class ModLoaderService {
 
         java.util.concurrent.atomic.AtomicInteger cnt = new java.util.concurrent.atomic.AtomicInteger(0);
         List<LibDownload> failed = java.util.Collections.synchronizedList(new ArrayList<>());
+        // Доля и счётчик для полосы «Играть» — как у Forge/NeoForge. 28.10.2026 981c42f4 закрыл
+        // лаунчер на 16-й секунде установки Fabric: полоса стояла без движения и без процентов.
+        InstallProgress progress = installProgress;
+        int total = toDownload.size();
+        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger(0);
+        Runnable tick = () -> {
+            int d = done.incrementAndGet();
+            if (progress != null) progress.update((double) d / total, "библиотеки " + d + "/" + total);
+        };
+        if (progress != null) progress.update(0, "библиотеки 0/" + total);
         ExecutorService pool = Executors.newFixedThreadPool(Math.min(LIB_DOWNLOAD_THREADS, toDownload.size()),
                 r -> {
                     // daemon: прерывание не разрывает блокирующее чтение сокета, и не-daemon
@@ -650,6 +662,8 @@ public class ModLoaderService {
                     } catch (Exception e) {
                         failed.add(lib);
                         log.onLog("[LIB] Failed: " + e.getMessage());
+                    } finally {
+                        tick.run();
                     }
                 }));
             }
@@ -883,6 +897,9 @@ public class ModLoaderService {
         }, "loader-installer-watchdog");
         watchdog.setDaemon(true);
         watchdog.start();
+        // Доля и этап для главного экрана (28.10.2026): за установкой Forge 26.2 у 354dd2dd была одна
+        // строка «обычно до пары минут» и полоса без цифр — через минуту он закрыл лаунчер.
+        InstallerProgressParser progressParser = new InstallerProgressParser(InstallerWork.of(jar));
         try (var r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
             // Установщик печатает сотни строк; отправлять каждую отдельным колбэком — значит
             // завалить FX-очередь (колбэк обычно делает Platform.runLater), и лаунчер выглядит
@@ -891,6 +908,7 @@ public class ModLoaderService {
             String line;
             while ((line = r.readLine()) != null) {
                 lastOutput.set(System.currentTimeMillis());
+                progressParser.line(line, installProgress);
                 batch.append(line).append('\n');
                 tail.append(line).append('\n');
                 if (tail.length() > 4000) tail.delete(0, tail.length() - 4000);
@@ -928,4 +946,91 @@ public class ModLoaderService {
 
     @FunctionalInterface
     public interface LogCallback { void onLog(String msg); }
+
+    /** Ход установки Forge/NeoForge: доля 0..1 (-1 — не знаем) и что сейчас делается — по-русски. */
+    @FunctionalInterface
+    public interface InstallProgress { void update(double fraction, String stage); }
+
+    private volatile InstallProgress installProgress;
+
+    /** Куда сообщать ход установки (null — никуда). Ставит лаунчер на время одного «Играть». */
+    public void setInstallProgress(InstallProgress p) {
+        installProgress = p;
+    }
+
+    /**
+     * Сколько работы у установщика: библиотек (install_profile.json + version.json внутри jar) и
+     * клиентских процессоров. Установщик печатает «Considering library …» на каждую библиотеку и
+     * «MainClass: …» на каждый процессор — по ним и считаем долю. Не прочиталось — нули.
+     */
+    record InstallerWork(int libraries, int processors) {
+        static InstallerWork of(Path installerJar) {
+            int libs = 0, procs = 0;
+            try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(installerJar.toFile())) {
+                var ip = zip.getEntry("install_profile.json");
+                if (ip != null) {
+                    JsonObject p = JsonParser.parseString(new String(zip.getInputStream(ip).readAllBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+                    if (p.has("versionInfo") && p.getAsJsonObject("versionInfo").has("libraries")) {
+                        libs += p.getAsJsonObject("versionInfo").getAsJsonArray("libraries").size();   // Forge до 1.13
+                    }
+                    if (p.has("libraries")) libs += p.getAsJsonArray("libraries").size();
+                    if (p.has("processors")) {
+                        for (var el : p.getAsJsonArray("processors")) {
+                            JsonObject proc = el.getAsJsonObject();
+                            if (!proc.has("sides")) { procs++; continue; }
+                            for (var s : proc.getAsJsonArray("sides")) {
+                                if ("client".equals(s.getAsString())) { procs++; break; }
+                            }
+                        }
+                    }
+                }
+                var vj = zip.getEntry("version.json");
+                if (vj != null) {
+                    JsonObject v = JsonParser.parseString(new String(zip.getInputStream(vj).readAllBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+                    if (v.has("libraries")) libs += v.getAsJsonArray("libraries").size();
+                }
+            } catch (Exception ignored) {
+                return new InstallerWork(0, 0);
+            }
+            return new InstallerWork(libs, procs);
+        }
+    }
+
+    /** Разбирает строки установщика в долю и этап: библиотеки — первые 70 %, обработка файлов игры — остальное. */
+    static final class InstallerProgressParser {
+        private final InstallerWork work;
+        private int libs, procs, patches;
+        private String lastStage = "";
+        private int lastPercent = -2;
+
+        InstallerProgressParser(InstallerWork work) { this.work = work; }
+
+        /** Вызывает {@code out}, только если доля или этап изменились. */
+        void line(String line, InstallProgress out) {
+            if (out == null) return;
+            if (line.startsWith("Considering library")) libs++;
+            else if (line.trim().startsWith("MainClass:")) { procs++; patches = 0; }
+            else if (line.startsWith("  Patching ")) { if (++patches % 100 != 0) return; }
+            else return;
+            double f;
+            String stage;
+            if (procs == 0) {
+                f = work.libraries() > 0 ? 0.7 * Math.min(1, libs / (double) work.libraries()) : -1;
+                stage = "библиотеки " + libs + (work.libraries() > 0 ? "/" + work.libraries() : "");
+            } else {
+                int total = Math.max(work.processors(), procs);
+                // Внутри процессора тысяча «Patching …» без общего числа — сдвигаем на полшага, не больше.
+                double inside = patches > 0 ? 0.5 : 0;
+                f = 0.7 + 0.3 * Math.min(1, (procs - 1 + inside) / total);
+                stage = "обработка файлов игры " + procs + "/" + total;
+            }
+            int pct = f < 0 ? -1 : (int) Math.round(f * 100);
+            if (pct == lastPercent && stage.equals(lastStage)) return;
+            lastPercent = pct;
+            lastStage = stage;
+            out.update(f, stage);
+        }
+    }
 }
