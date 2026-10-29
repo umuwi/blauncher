@@ -43,9 +43,11 @@ public class RustcraftService {
             "Accept", "application/vnd.github+json",
             "User-Agent", "BLauncher");
 
+    private final Path gameDir;
     private final Path root;
 
     public RustcraftService(Path gameDir) {
+        this.gameDir = gameDir;
         this.root = gameDir.resolve("engines").resolve("rustcraft");
     }
 
@@ -141,6 +143,90 @@ public class RustcraftService {
      */
     public boolean dataReady(String mcVersion) {
         return Files.isRegularFile(root.resolve("cache").resolve(mcVersion).resolve("data.bin"));
+    }
+
+    /*
+     * Урезанный кэш (29.10.2026). Готовя данные, Rustcraft берёт класспатх клиента из
+     * versions/<v>/<v>.json и требует ВСЕ библиотеки, чьё правило пропускает os.name, — архитектуру
+     * он не смотрит (rc-data/src/prepare.rs, client_classpath/rules_allow_on). Лаунчер же на x64 не
+     * качает natives-windows-arm64 (LibraryRules.isForeignNative). Не найдя хоть одну, движок молча
+     * уходит на запасной путь через серверный jar и собирает кэш без окраски травы, неба, моделей
+     * мобов и игрока, вкладок креатива и команд — и этот кэш остаётся навсегда. Игрок под видео:
+     * «трава чёрно-белая, неба нет, мобы невидимые, креатив не открывается».
+     */
+
+    /**
+     * Докачать библиотеки версии, которые движок требует, а лаунчер для игры на Java пропускает.
+     * Правило — точная копия движковой: нет rules — нужна; иначе решает последнее правило без
+     * features, у которого os.name нет или совпадает с нашей ОС. Возвращает число скачанных файлов.
+     */
+    public int ensureEngineLibraries(String mcVersion, Consumer<String> log) throws IOException {
+        Path json = gameDir.resolve("versions").resolve(mcVersion).resolve(mcVersion + ".json");
+        if (!Files.isRegularFile(json)) return 0;
+        JsonObject meta = JsonParser.parseString(Files.readString(json)).getAsJsonObject();
+        if (!meta.has("libraries") || !meta.get("libraries").isJsonArray()) return 0;
+        String os = Os.isWindows() ? "windows" : Os.isLinux() ? "linux" : "osx";
+        int got = 0;
+        for (JsonElement el : meta.getAsJsonArray("libraries")) {
+            if (!el.isJsonObject()) continue;
+            JsonObject lib = el.getAsJsonObject();
+            if (!engineRulesAllow(lib.get("rules"), os)) continue;
+            if (!lib.has("downloads") || !lib.getAsJsonObject("downloads").has("artifact")) continue;
+            JsonObject art = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
+            if (!art.has("path") || !art.has("url")) continue;
+            Path dest = gameDir.resolve("libraries").resolve(art.get("path").getAsString());
+            if (Files.isRegularFile(dest)) continue;
+            log.accept("[RUSTCRAFT] Докачиваю библиотеку для движка: " + dest.getFileName());
+            Files.createDirectories(dest.getParent());
+            if (Http.download(art.get("url").getAsString(), dest, Map.of(), Duration.ofSeconds(60)) < 0) {
+                throw new IOException("Сервер не отдал " + dest.getFileName());
+            }
+            if (art.has("sha1") && !art.get("sha1").getAsString().equalsIgnoreCase(digest(dest, "SHA-1"))) {
+                Files.deleteIfExists(dest);
+                throw new IOException("Не сошлась контрольная сумма " + dest.getFileName());
+            }
+            got++;
+        }
+        return got;
+    }
+
+    private static boolean engineRulesAllow(JsonElement rules, String os) {
+        if (rules == null || !rules.isJsonArray()) return true;
+        boolean allowed = false;
+        for (JsonElement r : rules.getAsJsonArray()) {
+            if (!r.isJsonObject()) continue;
+            JsonObject rule = r.getAsJsonObject();
+            JsonObject ruleOs = rule.has("os") && rule.get("os").isJsonObject() ? rule.getAsJsonObject("os") : null;
+            boolean osOk = ruleOs == null || !ruleOs.has("name") || os.equals(ruleOs.get("name").getAsString());
+            if (osOk && !rule.has("features")) {
+                allowed = rule.has("action") && "allow".equals(rule.get("action").getAsString());
+            }
+        }
+        return allowed;
+    }
+
+    /**
+     * Кэш, собранный по запасному пути (есть папка server\ или нет хоть одного файла из клиента), —
+     * удалить: на этом запуске движок соберёт его заново. Возвращает причину для отметки или null,
+     * если кэша нет или он полный.
+     */
+    public String dropPartialCache(String mcVersion) throws IOException {
+        Path dir = root.resolve("cache").resolve(mcVersion);
+        if (!Files.isRegularFile(dir.resolve("data.bin"))) {
+            // Запасной путь начинался и оборвался (до 1.14.41 — InternalError без jdk.compiler):
+            // server\ остался без data.bin. Полный кэш соберётся рядом с ней, а следующий запуск
+            // примет его за урезанный и пересоберёт ещё раз (f6b98965, 29.10.2026). Убираем сразу.
+            if (Files.isDirectory(dir.resolve("server"))) deleteRecursively(dir.resolve("server"));
+            return null;
+        }
+        String why = Files.isDirectory(dir.resolve("server")) ? "server" : null;
+        if (why == null) {
+            for (String f : List.of("client_facts.json", "entity_models.json", "creative.json", "commands.bin")) {
+                if (!Files.isRegularFile(dir.resolve(f))) { why = "no_" + f; break; }
+            }
+        }
+        if (why != null) deleteRecursively(dir);
+        return why;
     }
 
     /** Скачать архив выпуска, сверить sha256 (если известен), распаковать в &lt;root&gt;/&lt;tag&gt;/. */
@@ -254,8 +340,12 @@ public class RustcraftService {
     }
 
     private static String sha256(Path file) throws IOException {
+        return digest(file, "SHA-256");
+    }
+
+    private static String digest(Path file, String algorithm) throws IOException {
         try (InputStream in = Files.newInputStream(file)) {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = MessageDigest.getInstance(algorithm);
             byte[] buf = new byte[64 * 1024];
             int n;
             while ((n = in.read(buf)) != -1) md.update(buf, 0, n);

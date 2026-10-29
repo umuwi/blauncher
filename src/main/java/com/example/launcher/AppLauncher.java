@@ -7,8 +7,46 @@ import javafx.application.Application;
  *  module/classpath bootstrap takes over via Application.launch(). */
 public class AppLauncher {
     public static void main(String[] args) {
+        if (handOverToUpdateScript()) {
+            System.exit(0);
+            return;
+        }
         limitMemory();
         Application.launch(MainApp.class, args);
+    }
+
+    /**
+     * Тихое обновление ещё ставится — уступить ему и открыться заново через несколько секунд.
+     *
+     * <p>29.10.2026 трое за день (bab75a54, 90686aa1 и ещё один) закрыли лаунчер и открыли снова
+     * через 12–14 секунд. Скрипт замены (UpdateService.buildSelfReplaceScript) в это время ждал
+     * выхода старого процесса и пытался переложить jar, а новый процесс уже держал этот jar сам —
+     * замена не проходила, след «skc» без «m», и игроку показывали окно «обновление не
+     * установилось». Здесь окно ещё не создано: пока след не дошёл до «m» (заменил) или «f»
+     * (сдался), выходим, скрипт на следующей попытке заменяет jar, а преемник открывает уже новую
+     * версию. Один раз на обновление (метка «handover» в update-pending.txt) и только в первые
+     * полторы минуты — иначе зависший скрипт перезапускал бы лаунчер бесконечно.
+     */
+    private static boolean handOverToUpdateScript() {
+        try {
+            if (!com.example.launcher.service.Os.isWindows()) return false;   // на Linux jar меняется до выхода
+            java.nio.file.Path pending = java.nio.file.Path.of("config", "update-pending.txt");
+            if (!java.nio.file.Files.isRegularFile(pending)) return false;
+            String line = java.nio.file.Files.readString(pending).trim();
+            String[] p = line.split(" ");
+            if (p.length < 4 || !p[3].equals("silent") || line.contains("handover")) return false;
+            if (System.currentTimeMillis() - Long.parseLong(p[2]) > 90_000L) return false;
+            java.nio.file.Path trace = pending.resolveSibling(
+                    com.example.launcher.service.UpdateService.UPDATE_TRACE_FILE);
+            String steps = java.nio.file.Files.isRegularFile(trace) ? java.nio.file.Files.readString(trace) : "";
+            if (steps.contains("m") || steps.contains("f")) return false;
+            if (!com.example.launcher.ui.AppRestart.supported()) return false;
+            java.nio.file.Files.writeString(pending, line + " handover");
+            // 4 с: скрипт пробует заменить jar раз в секунду; после нашего выхода хватает одной попытки.
+            return com.example.launcher.ui.AppRestart.spawnSuccessor(4);
+        } catch (Exception e) {
+            return false;   // что-то не так с метками — просто запускаемся как обычно
+        }
     }
 
     /**

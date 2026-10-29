@@ -59,6 +59,11 @@ public final class AppRestart {
      * Exposed for tests; nothing here touches the running process.
      */
     public static List<String> command(String executable) {
+        return command(executable, HANDOVER_SECONDS);
+    }
+
+    /** То же с другой паузой — см. {@link #spawnSuccessor(int)}. */
+    public static List<String> command(String executable, int seconds) {
         List<String> argv = new ArrayList<>();
         if (!isWindows()) {
             // Linux (с 20.10.2026): та же пауза, путь к лаунчеру — отдельным аргументом ($0),
@@ -66,13 +71,13 @@ public final class AppRestart {
             // это папка данных, куда её поставил скрипт blauncher.
             argv.add("sh");
             argv.add("-c");
-            argv.add("sleep " + HANDOVER_SECONDS + "; exec \"$0\"");
+            argv.add("sleep " + seconds + "; exec \"$0\"");
             argv.add(executable);
             return argv;
         }
         argv.add("cmd");
         argv.add("/c");
-        argv.add("ping -n " + (HANDOVER_SECONDS + 1) + " 127.0.0.1 >nul & start \"\" \"" + executable + "\"");
+        argv.add("ping -n " + (seconds + 1) + " 127.0.0.1 >nul & start \"\" \"" + executable + "\"");
         return argv;
     }
 
@@ -82,6 +87,11 @@ public final class AppRestart {
      * failed restart leaves a working launcher on screen instead of nothing.
      */
     public static boolean spawnSuccessor() {
+        return spawnSuccessor(HANDOVER_SECONDS);
+    }
+
+    /** С паузой в {@code seconds} секунд — дольше обычной, когда ждём не только своего выхода. */
+    public static boolean spawnSuccessor(int seconds) {
         Path self = resolveSelf();
         if (self == null || !supported()) return false;
         try {
@@ -90,7 +100,7 @@ public final class AppRestart {
             // сетевом чтении эта JVM живёт дольше задержки, преемник видит лок занятым и выходит
             // с «BLauncher уже запущен» — человек остаётся вообще без лаунчера.
             com.example.launcher.MainApp.releaseSingleInstanceLock();
-            ProcessBuilder builder = new ProcessBuilder(command(self.toString()));
+            ProcessBuilder builder = new ProcessBuilder(command(self.toString(), seconds));
             builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
             builder.redirectError(ProcessBuilder.Redirect.DISCARD);
             builder.start();

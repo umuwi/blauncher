@@ -534,7 +534,8 @@ public class ModLoaderService {
      */
     public boolean isLoaderReady(String versionId, String modLoader, String loaderVersion) {
         if (!"fabric".equals(modLoader)) {
-            return !"net.minecraft.client.main.Main".equals(resolveMainClass(versionId, modLoader, loaderVersion));
+            if ("net.minecraft.client.main.Main".equals(resolveMainClass(versionId, modLoader, loaderVersion))) return false;
+            return loaderLibrariesPresent(versionId, modLoader, loaderVersion);
         }
         Path profDir = librariesDir.resolve("fabric");
         if (!Files.exists(profDir.resolve("fabric-" + versionId + ".mainclass"))) return false;
@@ -552,6 +553,51 @@ public class ModLoaderService {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /**
+     * Все ли библиотеки из json версии Forge/NeoForge лежат на диске. Главный класс в json есть и
+     * без них: 29.10.2026 у 31827eab установщик Forge 1.12.2 не докачал launchwrapper, Forge
+     * считался установленным, и каждый запуск падал «Could not find or load main class
+     * net.minecraft.launchwrapper.Launch». Нет хоть одной — ставим загрузчик заново.
+     */
+    private boolean loaderLibrariesPresent(String versionId, String modLoader, String loaderVersion) {
+        if (loaderVersion == null || loaderVersion.isBlank()) return true;
+        String folder;
+        if ("forge".equals(modLoader)) {
+            folder = versionId + "-forge-" + loaderVersion;
+            if (!Files.isDirectory(gameDir.resolve("versions").resolve(folder))
+                    && Files.isDirectory(gameDir.resolve("versions").resolve(versionId + "-" + loaderVersion))) {
+                folder = versionId + "-" + loaderVersion;
+            }
+        } else if ("neoforge".equals(modLoader)) {
+            folder = vds.findNeoForgeVersionFolder(gameDir, loaderVersion);
+            if (folder == null) return true;   // старая раскладка — как раньше, по главному классу
+        } else {
+            return true;
+        }
+        Path json = gameDir.resolve("versions").resolve(folder).resolve(folder + ".json");
+        if (!Files.isRegularFile(json)) return true;
+        try {
+            JsonObject obj = JsonParser.parseString(Files.readString(json)).getAsJsonObject();
+            if (!obj.has("libraries")) return true;
+            for (var el : obj.getAsJsonArray("libraries")) {
+                if (!el.isJsonObject()) continue;
+                JsonObject lib = el.getAsJsonObject();
+                // Библиотеки с правилами ОС и натив — забота общей проверки, здесь только общие jar.
+                if (lib.has("rules") || lib.has("natives")) continue;
+                Path file = null;
+                if (lib.has("downloads") && lib.getAsJsonObject("downloads").has("artifact")) {
+                    JsonObject art = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
+                    if (art.has("path")) file = librariesDir.resolve(art.get("path").getAsString());
+                }
+                if (file == null && lib.has("name")) file = mavenToPath(lib.get("name").getAsString());
+                if (file != null && (!Files.exists(file) || Files.size(file) == 0)) return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return true;   // json не читается — решит запуск, переставлять вслепую не будем
         }
     }
 

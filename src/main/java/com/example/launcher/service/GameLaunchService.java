@@ -69,8 +69,10 @@ public class GameLaunchService {
         // Забираем сразу: упади запуск раньше — следующий обычный не должен уйти в Rustcraft.
         final Path engine = nextEngine;
         final String engineJavaOverride = nextEngineJava;
+        final String engineBackend = nextEngineBackend;
         nextEngine = null;
         nextEngineJava = null;
+        nextEngineBackend = null;
         String launchVersion = getLaunchVersionId(versionId, profile);
 
         Path launchJar = versionsDir.resolve(launchVersion).resolve(launchVersion + ".jar");
@@ -172,6 +174,8 @@ public class GameLaunchService {
             env.put("RUSTCRAFT_GAME_DIR", gameDir.toAbsolutePath().toString());
             env.put("RUSTCRAFT_CACHE", engine.getParent().getParent().resolve("cache").toAbsolutePath().toString());
             if (engineJava != null && Files.isRegularFile(Path.of(engineJava))) env.put("RUSTCRAFT_JAVA", engineJava);
+            // «dx12» — DirectX 12 вместо Vulkan; любое другое значение Rustcraft молча заменяет Vulkan'ом.
+            if (engineBackend != null && !engineBackend.isEmpty()) env.put("RUSTCRAFT_BACKEND", engineBackend);
         }
         final boolean wslGpu = engine == null && enableWslGpu(pb, callback);
 
@@ -1334,14 +1338,17 @@ public class GameLaunchService {
     private volatile String nextLaunchServer;
     private volatile Path nextEngine;
     private volatile String nextEngineJava;
+    private volatile String nextEngineBackend;
 
     /**
      * Запустить БЛИЖАЙШИЙ запуск не через java, а через этот движок (rustcraft.exe); null — как обычно.
      * {@code engineJava} — Java для самого движка (RUSTCRAFT_JAVA); null — та же, что выбрана для игры.
+     * {@code backend} — RUSTCRAFT_BACKEND ("dx12"); null или "" — его выбор (Vulkan).
      */
-    public void setNextEngine(Path engineExe, String engineJava) {
+    public void setNextEngine(Path engineExe, String engineJava, String backend) {
         this.nextEngine = engineExe;
         this.nextEngineJava = engineJava;
+        this.nextEngineBackend = backend;
     }
 
     /** Сервер, на который зайти при БЛИЖАЙШЕМ запуске (плитка сервера на главной); null — как обычно. */

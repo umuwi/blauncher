@@ -23,6 +23,15 @@ public class LauncherConfig {
     /** «Язык игры» той же карточки: "Java" — обычная игра, "Rust" — Rustcraft (RustcraftService). */
     private String lastSelectedEngine = "Java";
     /**
+     * Графический API Rustcraft (RUSTCRAFT_BACKEND): "" — его выбор (Vulkan), "dx12" — DirectX 12.
+     * Ставится сам после вылета на Vulkan (MainController, 29.10.2026).
+     */
+    private String rustcraftBackend = "";
+    /** DirectX 12 у Rustcraft уже падал на этом компьютере — на него больше не переключаемся (29.10.2026). */
+    private boolean rustcraftDx12Failed;
+    /** Спросили ли «Как выглядела игра на Rust?» — спрашиваем один раз на установку (29.10.2026). */
+    private boolean rustcraftLookAsked;
+    /**
      * 1 once the quick-play loader default moved from Vanilla to Fabric (BL Core only loads on
      * Fabric). A config that still says "Vanilla" from before that is moved over once; a choice
      * made after it is never touched again.
@@ -215,6 +224,30 @@ public class LauncherConfig {
 
     public void setLastSelectedEngine(String lastSelectedEngine) {
         this.lastSelectedEngine = lastSelectedEngine;
+    }
+
+    public String getRustcraftBackend() {
+        return rustcraftBackend == null ? "" : rustcraftBackend;
+    }
+
+    public void setRustcraftBackend(String rustcraftBackend) {
+        this.rustcraftBackend = rustcraftBackend;
+    }
+
+    public boolean isRustcraftDx12Failed() {
+        return rustcraftDx12Failed;
+    }
+
+    public void setRustcraftDx12Failed(boolean rustcraftDx12Failed) {
+        this.rustcraftDx12Failed = rustcraftDx12Failed;
+    }
+
+    public boolean isRustcraftLookAsked() {
+        return rustcraftLookAsked;
+    }
+
+    public void setRustcraftLookAsked(boolean rustcraftLookAsked) {
+        this.rustcraftLookAsked = rustcraftLookAsked;
     }
 
     public String getLastSelectedLoader() {

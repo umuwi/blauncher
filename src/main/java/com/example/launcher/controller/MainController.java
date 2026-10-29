@@ -4739,6 +4739,17 @@ public class MainController {
                             + " dl=" + (Http.DOWNLOADED.get() > rcB0 ? 1 : 0) + " mb=" + rcMb
                             + " sec=" + (System.currentTimeMillis() - rcT0) / 1000);
                     log("[RUSTCRAFT] Движок: " + rustcraftExe);
+                    // Урезанный кэш прошлых версий лаунчера (трава без цвета, нет неба и мобов) —
+                    // удалить до проверки dataReady, чтобы движку дали Java пересобрать его.
+                    try {
+                        String partial = new RustcraftService(gameDir).dropPartialCache(versionId);
+                        if (partial != null) {
+                            stat("rustcraft_cache", "partial why=" + partial);
+                            log("[RUSTCRAFT] Данные игры были собраны не полностью — соберу заново");
+                        }
+                    } catch (IOException cacheEx) {
+                        stat("rustcraft_cache", "drop_fail exc=" + cacheEx.getClass().getSimpleName());
+                    }
                     if (!new RustcraftService(gameDir).dataReady(versionId)) {
                         rustcraftJava = rustcraftSourceJava(javaPath);
                         log("[RUSTCRAFT] Первый запуск дольше: Rustcraft один раз готовит данные игры из 26.3 (несколько минут)");
@@ -4851,6 +4862,20 @@ public class MainController {
                 Profile launchProfile = vanillaOrRealProfile(versionId,
                         rustcraftExe != null ? "vanilla" : modLoader, modLoaderVersion);
 
+                // Версия уже стоит — докачать библиотеки, которые движку нужны, а Java-игре нет
+                // (natives-windows-arm64). Без них Rustcraft собирает урезанный кэш.
+                if (rustcraftExe != null) {
+                    try {
+                        int got = new RustcraftService(gameDir).ensureEngineLibraries(versionId,
+                                msg -> Platform.runLater(() -> log(msg)));
+                        if (got > 0) stat("rustcraft_cache", "libs=" + got);
+                    } catch (Exception libEx) {
+                        // Не роняем запуск: игра пойдёт, но кэш будет урезанным — видно по отметке.
+                        stat("rustcraft_cache", "libs_fail exc=" + libEx.getClass().getSimpleName());
+                        log("[RUSTCRAFT] Не удалось докачать библиотеки: " + libEx.getMessage());
+                    }
+                }
+
                 // Прошлый запуск этой версии упал на «не хватает файлов» — сперва сверяем библиотеки
                 // по sha1 (обычная проверка смотрит только размер). 27.10.2026 3aec706a.
                 String launchKey = modLoader + " " + versionId;
@@ -4956,11 +4981,38 @@ public class MainController {
 
                 if (pendingLaunchServer != null) log("[LAUNCH] Сразу заходим на сервер " + pendingLaunchServer);
                 gameLaunchService.setNextLaunchServer(pendingLaunchServer);
-                gameLaunchService.setNextEngine(rustcraftExe, rustcraftJava);
                 final boolean viaRustcraft = rustcraftExe != null;
+                final String rustcraftBackend = viaRustcraft && Os.isWindows() ? config.getRustcraftBackend() : "";
+                if (!rustcraftBackend.isEmpty()) log("[RUSTCRAFT] Графика: " + rustcraftBackend + " (после вылета на Vulkan)");
+                gameLaunchService.setNextEngine(rustcraftExe, rustcraftJava, rustcraftBackend);
+                // Строки запуска графики — отдельно: за долгую игру буфер вывода (300 000 символов)
+                // вытесняет начало, а по ним решается, переходить ли на DirectX 12.
+                final StringBuilder rcStartup = new StringBuilder();
+                final boolean[] rcGpuSent = {false};
                 gameLaunchService.launchGame(launchProfile, versionId,
                         output -> {
                             log(output);   // log() сам переносит строки на поток интерфейса пачкой
+                            if (viaRustcraft && (output.startsWith("[startup] instance ") || output.startsWith("adapter: "))) {
+                                synchronized (rcStartup) {
+                                    if (rcStartup.length() < 2000) rcStartup.append(output).append('\n');
+                                }
+                                if (output.startsWith("adapter: ") && isSoftwareAdapter(output)) {
+                                    Platform.runLater(() -> showToast(NO_GPU_DRIVER_TIP, "warning"));
+                                }
+                                // Видеокарта на каждом запуске, не только при вылете: 28.10.2026 игроки
+                                // прислали фото с тёмным небом и рябью, а на RX 6700 XT это не повторилось —
+                                // сравнивать было не с чем. Одна отметка на запуск.
+                                if (output.startsWith("adapter: ") && !rcGpuSent[0]) {
+                                    rcGpuSent[0] = true;
+                                    lastRustcraftGpu = rustcraftGpuInfo(output);
+                                    stat("rustcraft_gpu", lastRustcraftGpu);
+                                }
+                                // Движок всё же пошёл запасным путём — значит, кэш снова будет урезанным
+                                // (см. RustcraftService.ensureEngineLibraries). Должно быть ноль.
+                                if (output.contains("downloading the official server jar")) {
+                                    stat("rustcraft_cache", "fallback");
+                                }
+                            }
                             if (output.startsWith("[LAUNCH]") || output.startsWith("[NATIVES]")) {
                                 updateLaunchStage(output);
                             }
@@ -5008,6 +5060,17 @@ public class MainController {
                                     + (http.isEmpty() ? "" : " http=" + http)
                                     + (others > 0 ? " others=" + others : "")
                                     + (!crashed && ModDoctor.loaderRefused(capturedLog) ? " refused=1" : ""));
+                            // У вылетов Rustcraft нет Java-исключения (exc= пустой) — 29.10.2026 после
+                            // 1.14.41 было 15 вылетов 0xC0000005/0xC0000409/0xCFFFFFFF/«1» у 10 человек, и
+                            // понять было не по чему. Отдельной отметкой: графика, видеокарта, этап, хвост.
+                            String rcLog = "";
+                            if (viaRustcraft) {
+                                synchronized (rcStartup) {
+                                    rcLog = rcStartup + capturedLog;
+                                }
+                            }
+                            final String rcBe = viaRustcraft ? rustcraftApi(rcLog) : "";
+                            if (viaRustcraft && crashed) stat("rustcraft_crash", rustcraftCrashInfo(rcLog));
                             finishLaunchAttempt();
                             if (skinServerForExit[0] != null) {
                                 skinServerForExit[0].close();
@@ -5030,16 +5093,65 @@ public class MainController {
                             // только полная перекачка. Сверка sha1 стоит секунды, лишний раз не страшно.
                             boolean mixinEarly = crashed && (System.currentTimeMillis() - launchStartMillis) < 60_000L
                                     && exc.matches("InjectionError|MixinApplyError|MixinTransformerError|InvalidInjectionException");
-                            if (crashed && ("files".equals(why) || "corrupt".equals(why)) || mixinEarly) repairLibsFor = launchKey;
+                            // no_main_class — туда же: 29.10.2026 у 31827eab Forge 1.12.2 четыре раза подряд
+                            // закрывался через секунду — не докачался launchwrapper, а лаунчер считал Forge
+                            // установленным и ничего не чинил. Воспроизведено на чистой папке.
+                            if (crashed && ("files".equals(why) || "corrupt".equals(why) || "no_main_class".equals(why))
+                                    || mixinEarly) repairLibsFor = launchKey;
                             if (crashed) {
                                 log("[LAUNCH] Игра завершилась с кодом " + exitCode);
                                 long crashMinutes = (System.currentTimeMillis() - launchStartMillis) / 60000L;
-                                if (viaRustcraft && crashMinutes < 2) {
+                                boolean rcNoDriver = viaRustcraft && isSoftwareAdapter(rcLog);
+                                boolean rcNet = viaRustcraft && crashMinutes < 2 && rustcraftNetworkFail(rcLog);
+                                if (!rcNet) rustcraftNetFails = 0;
+                                if (rcNoDriver) {
+                                    // 29.10.2026 у a7712b5f «adapter: Microsoft Basic Render Driver» — драйвера
+                                    // видеокарты нет, Windows рисует процессором. DirectX 12 тут не поможет.
+                                    // Сперва просили поставить драйвер — за сутки пятеро, никто не поставил, а
+                                    // Rust у них падал через 3–21 мин. Java у двоих из них шла без вылетов
+                                    // (f3a73d4c, b514efef), поэтому переводим на Java. Ссылок на сайты драйверов
+                                    // не даём — решение владельца: скачает не тот, а виноваты будем мы.
+                                    stat("engine_fallback", "exc=no_driver" + (rcBe.isEmpty() ? "" : " be=" + rcBe)
+                                            + " min=" + crashMinutes);
+                                    Platform.runLater(() -> {
+                                        if (homeEngineCombo != null) homeEngineCombo.getSelectionModel().select(ENGINE_JAVA);
+                                        onHomeEngineSelected();
+                                        showToast("Rust вылетел: на компьютере не установлен драйвер видеокарты, и игру рисует "
+                                                + "процессор. Переключил на обычную Java — нажмите «Играть»", "warning");
+                                    });
+                                } else if (rcNet && ++rustcraftNetFails <= 1) {
+                                    // Rustcraft сам качает данные версии с Mojang; 29.10.2026 у 533009a0 связь
+                                    // оборвалась («version_data: download: … Peer disconnected»), и его сразу
+                                    // перевели на Java. Обрыв сети — не поломка движка: даём ещё попытку.
+                                    Platform.runLater(() -> showToast("Rustcraft не докачал данные игры — оборвалась связь. "
+                                            + "Нажмите «Играть» ещё раз", "warning"));
+                                } else if (viaRustcraft && Os.isWindows() && rustcraftBackend.isEmpty() && "vk".equals(rcBe)
+                                        && crashMinutes < 15 && !config.isRustcraftDx12Failed()) {
+                                    // Нативные вылеты Rustcraft — почти всегда драйвер Vulkan. Прежде чем
+                                    // возвращать Java, один раз пробуем DirectX 12: тот же движок, другой
+                                    // путь в драйвер (RUSTCRAFT_BACKEND=dx12, проверено 29.10.2026). Вылеты
+                                    // 29.10 были на 0–12 мин; после долгой игры это скорее не графика.
+                                    config.setRustcraftBackend("dx12");
+                                    try { configService.saveConfig(config); } catch (Exception ignored) { }
+                                    stat("engine_backend", "dx12 from=vk min=" + crashMinutes + " code=" + exitCode);
+                                    Platform.runLater(() -> showToast("Rustcraft упал на графике Vulkan. Следующий запуск "
+                                            + "попробует DirectX 12 — нажмите «Играть» ещё раз", "warning"));
+                                } else if (viaRustcraft && crashMinutes < 2) {
                                     // Rustcraft — чужой экспериментальный движок. 28.10.2026 за час четверо
                                     // новичков выбрали «язык игры: Rust», и у всех он падал через 5–60 с
                                     // («InternalError») по многу раз подряд; двое так и ушли. Возвращаем Java
                                     // сами: обычная 26.3 у них запускалась.
-                                    stat("engine_fallback", "exc=" + (exc.isEmpty() ? why : exc));
+                                    stat("engine_fallback", "exc=" + (exc.isEmpty() ? why : exc)
+                                            + (rcBe.isEmpty() ? "" : " be=" + rcBe));
+                                    // DirectX 12 тоже не пошёл сразу — путь назад: при следующем выборе Rust
+                                    // снова Vulkan (на нём движок хотя бы запускался, раз сюда перешли с него).
+                                    // Запоминаем отказ: иначе следующий вылет на Vulkan снова переключал на
+                                    // DirectX 12 (99217110, GTX 950M, 29.10.2026 — паника на первом кадре).
+                                    if (!rustcraftBackend.isEmpty()) {
+                                        config.setRustcraftBackend("");
+                                        config.setRustcraftDx12Failed(true);
+                                        try { configService.saveConfig(config); } catch (Exception ignored) { }
+                                    }
                                     Platform.runLater(() -> {
                                         if (homeEngineCombo != null) homeEngineCombo.getSelectionModel().select(ENGINE_JAVA);
                                         onHomeEngineSelected();
@@ -5055,6 +5167,12 @@ public class MainController {
                                 log("[LAUNCH] Загрузчик отказался запускать моды сборки");
                                 reportModConflictIfAny(capturedLog);
                                 offerModDoctor(playtimeTarget, capturedLog, "mods");
+                            }
+                            // Первая нормальная игра на Rust (без вылета, хотя бы минута) — один раз
+                            // спрашиваем, как она выглядела: сломанную картинку по журналу не поймать.
+                            if (viaRustcraft && !crashed && System.currentTimeMillis() - launchStartMillis >= 60_000L
+                                    && !config.isRustcraftLookAsked() && config.isTelemetryEnabled()) {
+                                Platform.runLater(this::askRustcraftLook);
                             }
                             stoppedByUser = false;
                             if (playtimeTarget == null) {
@@ -5446,7 +5564,8 @@ public class MainController {
      */
     private void reportCrash(int exitCode, String why) {
         String hint = switch (why) {
-            case "no_main_class" -> "Java не нашла файлы игры. Если в пути к лаунчеру есть необычные символы — "
+            case "no_main_class" -> "Java не нашла файлы игры. Нажмите «Играть» ещё раз — лаунчер проверит "
+                    + "и докачает их. Не помогло и в пути к лаунчеру есть необычные символы — "
                     + "перенесите его в папку с латинским именем, например C:\\BLauncher";
             case "heap" -> "Java не смогла выделить память — уменьшите «Память» в настройках";
             case "java_version" -> "Неподходящая версия Java для этой версии игры — "
@@ -5633,6 +5752,97 @@ public class MainController {
         }
         return last.matches("[A-Za-z0-9_]{1,60}") ? last : "";
     }
+
+    /** Сколько запусков Rustcraft подряд оборвались на скачивании данных — после второго уже не сеть. */
+    private int rustcraftNetFails;
+
+    static final String NO_GPU_DRIVER_TIP = "На компьютере не установлен драйвер видеокарты — игру рисует процессор, "
+            + "поэтому Rust может тормозить и вылетать. Если вылетит, лаунчер сам переключит на обычную Java";
+
+    /** «adapter: Microsoft Basic Render Driver (…)» — Windows без драйвера видеокарты рисует процессором. */
+    static boolean isSoftwareAdapter(String log) {
+        return log != null && java.util.regex.Pattern.compile("(?m)^adapter: (Microsoft Basic Render|llvmpipe|SwiftShader)")
+                .matcher(log).find();
+    }
+
+    /** Последняя строка самого движка обрывается на скачивании: «version_data: download: … Peer disconnected». */
+    static boolean rustcraftNetworkFail(String log) {
+        String last = rustcraftLastLine(log).toLowerCase(java.util.Locale.ROOT);
+        return last.matches(".*\\b(download|http|https|request)\\b.*")
+                && last.matches(".*(disconnect|timed out|timeout|connection|reset|refused|resolve|dns|unexpectedeof|tls|io error).*");
+    }
+
+    /**
+     * Отметка видеокарты Rustcraft по строке «adapter: AMD Radeon RX 6700 XT (Vulkan); pool: 16 threads»:
+     * «be=vk gpu=AMD_Radeon_RX_6700_XT» (+ « sw=1», если Windows рисует без драйвера).
+     */
+    static String rustcraftGpuInfo(String adapterLine) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^adapter: (.+?) \\((Vulkan|DirectX 12|Dx12|Gl|OpenGL)[^)]*\\)").matcher(adapterLine.trim());
+        if (!m.find()) return "gpu=" + rcToken(adapterLine.replaceFirst("^adapter:\\s*", ""), 40);
+        String be = m.group(2).startsWith("Vulkan") ? "vk" : m.group(2).startsWith("D") ? "dx12" : "gl";
+        return "be=" + be + " gpu=" + rcToken(m.group(1), 60) + (isSoftwareAdapter(adapterLine.trim()) ? " sw=1" : "");
+    }
+
+    /** Последняя строка вывода самого Rustcraft (строки лаунчера «[LAUNCH] …» пропускаются). */
+    static String rustcraftLastLine(String log) {
+        String last = "";
+        if (log == null) return last;
+        for (String line : log.split("\\R")) {
+            String t = line.trim();
+            if (t.isEmpty() || t.matches("^\\[[A-Z][A-Z_ -]*\\].*")) continue;
+            last = t;
+        }
+        return last;
+    }
+
+    /** Графика, на которой шёл Rustcraft: «vk», «dx12» (по строке «[startup] instance …»); "" — до неё не дошёл. */
+    static String rustcraftApi(String log) {
+        if (log == null) return "";
+        int at = log.lastIndexOf("[startup] instance ");
+        if (at < 0) return "";
+        String rest = log.substring(at + "[startup] instance ".length());
+        if (rest.startsWith("Vulkan")) return "vk";
+        if (rest.startsWith("DirectX 12")) return "dx12";
+        return rcToken(rest.split(" at ", 2)[0], 8).toLowerCase();
+    }
+
+    /**
+     * Отметка вылета Rustcraft: «be=vk gpu=AMD_Radeon_RX_6700_XT step=event_loop last=…». step — последний
+     * пройденный этап запуска («[startup] … at N ms»), last — последняя строка вывода самого движка
+     * (без путей: в них бывает имя пользователя Windows). В 120 символов detail укладывается.
+     */
+    static String rustcraftCrashInfo(String log) {
+        if (log == null) log = "";
+        StringBuilder sb = new StringBuilder();
+        String be = rustcraftApi(log);
+        if (!be.isEmpty()) sb.append("be=").append(be);
+        java.util.regex.Matcher m = RC_ADAPTER.matcher(log);
+        String gpu = "";
+        while (m.find()) gpu = m.group(1);
+        if (!gpu.isEmpty()) sb.append(sb.length() > 0 ? " " : "").append("gpu=").append(rcToken(gpu, 26));
+        m = RC_STEP.matcher(log);
+        String step = "";
+        while (m.find()) step = m.group(1);
+        if (!step.isEmpty()) sb.append(sb.length() > 0 ? " " : "").append("step=").append(rcToken(step, 18));
+        String last = rustcraftLastLine(log);
+        if (!last.isEmpty()) {
+            // «PATH», а не «<path>»: event.php оставляет в detail только [A-Za-z0-9_ .:=-].
+            last = last.replaceAll("[A-Za-z]:[\\\\/]\\S*", "PATH").replaceAll("/(home|Users)/\\S*", "PATH");
+            sb.append(sb.length() > 0 ? " " : "").append("last=").append(rcToken(last, 50));
+        }
+        return sb.length() == 0 ? "no_output" : sb.toString();
+    }
+
+    private static String rcToken(String s, int max) {
+        String t = s.replaceAll("[^A-Za-z0-9.:_-]+", "_").replaceAll("_+", "_").replaceAll("^_|_$", "");
+        return t.length() > max ? t.substring(0, max) : t;
+    }
+
+    private static final java.util.regex.Pattern RC_ADAPTER = java.util.regex.Pattern.compile(
+            "(?m)^adapter: (.+?) \\((?:Vulkan|DirectX 12|Dx12|Gl|OpenGL)[^)]*\\)");
+    private static final java.util.regex.Pattern RC_STEP = java.util.regex.Pattern.compile(
+            "(?m)^\\[startup\\] (.+?) at \\d+ ms");
 
     private static final java.util.regex.Pattern CAUSED_BY = java.util.regex.Pattern.compile(
             "Caused by: (?:[a-z]\\w*\\.)*(?:[A-Z]\\w*\\$)*([A-Z]\\w*(?:Exception|Error))");
@@ -5902,6 +6112,76 @@ public class MainController {
         if (yesBtn != null) yesBtn.setDefaultButton(false);
         if (noBtn != null) noBtn.setDefaultButton(true);
         return ask.showAndWait().orElse(no) == yes;
+    }
+
+    /** Видеокарта последнего запуска Rustcraft («be=vk gpu=…») — к отзыву о картинке. */
+    private volatile String lastRustcraftGpu = "";
+
+    /**
+     * «Как выглядела игра на Rust?» — один раз после первой игры без вылета. 28.10.2026 игроки прислали
+     * фото с тёмным небом и рябью вместо снега, а на нашей RX 6700 XT это не повторилось: сломанная
+     * картинка не роняет игру и в журнал не пишется. Ответ «нормально/проблемы» — отметкой
+     * rustcraft_look рядом с rustcraft_gpu; при проблемах описание обязательно, иначе не понять что чинить.
+     */
+    private void askRustcraftLook() {
+        if (config.isRustcraftLookAsked()) return;
+        config.setRustcraftLookAsked(true);
+        try { configService.saveConfig(config); } catch (Exception ignored) { }
+        String gpu = lastRustcraftGpu;
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION);
+        ask.initOwner(primaryStage);
+        ask.setTitle("BLauncher");
+        ask.setHeaderText("Как выглядела игра на Rust?");
+        ask.setContentText("Rust — пробный движок, и на некоторых видеокартах он рисует мир неправильно: "
+                + "тёмное небо, рябь вместо блоков, не те текстуры. Ответ поможет понять, где он ломается.");
+        ButtonType ok = new ButtonType("Всё нормально", ButtonBar.ButtonData.YES);
+        ButtonType bad = new ButtonType("Были проблемы с картинкой", ButtonBar.ButtonData.NO);
+        ButtonType later = new ButtonType("Не отвечать", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ask.getButtonTypes().setAll(ok, bad, later);
+        ButtonType answer = ask.showAndWait().orElse(later);
+        if (answer == ok) {
+            stat("rustcraft_look", "ok " + gpu);
+        } else if (answer == bad) {
+            String text = askRustcraftProblemText();
+            stat("rustcraft_look", (text == null ? "bad_notext " : "bad ") + gpu);
+            if (text != null && onlineStatsService != null) {
+                onlineStatsService.feedback("rustcraft_look", gpu, text);
+                showToast("Спасибо! Описание отправлено — посмотрим, что можно исправить", "info");
+            }
+        } else {
+            stat("rustcraft_look", "skip " + gpu);
+        }
+    }
+
+    /** Окно «Что было не так?» — «Отправить» включается, только когда что-то написано. null — закрыли. */
+    private String askRustcraftProblemText() {
+        javafx.scene.control.Dialog<String> d = new javafx.scene.control.Dialog<>();
+        d.initOwner(primaryStage);
+        d.setTitle("BLauncher");
+        d.setHeaderText("Что было не так с картинкой?");
+        javafx.scene.control.TextArea area = new javafx.scene.control.TextArea();
+        area.setPromptText("Например: небо тёмно-синее без солнца, вблизи снег превращается в белую рябь, "
+                + "у травы коричневые бока. Можно указать, где это было и какая была погода.");
+        area.setWrapText(true);
+        area.setPrefRowCount(5);
+        area.setPrefColumnCount(40);
+        area.setTextFormatter(new javafx.scene.control.TextFormatter<String>(c ->
+                c.getControlNewText().length() <= 500 ? c : null));
+        Label hint = new Label("Не пишите ник, почту и другие личные данные. Вместе с текстом уйдёт только "
+                + "модель видеокарты и версия лаунчера.");
+        hint.setWrapText(true);
+        hint.setMaxWidth(420);
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(8, area, hint);
+        d.getDialogPane().setContent(box);
+        ButtonType send = new ButtonType("Отправить", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Отмена", ButtonBar.ButtonData.CANCEL_CLOSE);
+        d.getDialogPane().getButtonTypes().setAll(send, cancel);
+        Node sendBtn = d.getDialogPane().lookupButton(send);
+        sendBtn.setDisable(true);
+        area.textProperty().addListener((o, a, b) -> sendBtn.setDisable(b == null || b.strip().length() < 5));
+        d.setResultConverter(bt -> bt == send ? area.getText().strip() : null);
+        Platform.runLater(area::requestFocus);
+        return d.showAndWait().orElse(null);
     }
 
     private void updateLaunchStage(String raw) {
@@ -6441,9 +6721,17 @@ public class MainController {
      *  from the Mods screen itself which build was even about to receive the mod. */
     private void showAddModTargetMenu(ModInfo mod, Button sourceButton) {
         ContextMenu menu = new ContextMenu();
+        // Сборки, под версию игры которых у проекта файла нет, — сразу видно и не нажать.
+        // 29.10.2026 b514efef десять раз подряд добавлял ресурспаки в сборку Fabric 1.16.5 и десять
+        // раз получал «нет подходящей версии»: поиск идёт по «Любой версии», а сборку выбирают уже
+        // здесь. Список версий из поиска Modrinth полный (см. ModrinthService.search), пустой — не знаем.
+        java.util.List<String> known = mod.getGameVersions();
         for (Profile build : builds) {
             if (build.isVanillaEntry()) continue;
-            MenuItem item = new MenuItem(build.getName());
+            String v = build.getVersionId();
+            boolean noFile = known != null && !known.isEmpty() && v != null && !known.contains(v);
+            MenuItem item = new MenuItem(build.getName() + (noFile ? "  ·  нет версии для " + v : ""));
+            item.setDisable(noFile);
             item.setOnAction(e -> installModIntoBuild(mod, build, sourceButton));
             menu.getItems().add(item);
         }
@@ -13291,7 +13579,8 @@ public class MainController {
         if (System.currentTimeMillis() - at > 7L * 24 * 3600 * 1000) return;
         String from = p[0], to = p[1];
         boolean silent = p.length > 3 && p[3].equals("silent");
-        String tag = silent ? " silent=1" : "";
+        // «handover» — открыли во время установки, и лаунчер уступил скрипту (AppLauncher).
+        String tag = (silent ? " silent=1" : "") + (pending.contains("handover") ? " handover=1" : "");
         if (!updateService.isNewer(to, LAUNCHER_VERSION)) {
             stat("update_ok", from + "-" + to + tag);
             return;
@@ -13662,8 +13951,19 @@ public class MainController {
     /** Ловит нажатия во всём окне — кнопки, переключатели, списки, флажки, кликабельные карточки. */
     private void installUiClickTracker() {
         if (primaryStage == null) return;
+        // ACTION шлют и списки, которые лаунчер заполняет сам (setItems/select): 29.10.2026 в первой
+        // же ночи 1.14.41 «serverVanillaVersionCombo=15 newServerVersionCombo=0» пришло 88 раз без
+        // единого щелчка. Считаем ACTION, только если чуть раньше был настоящий ввод мышью или клавишей.
+        long[] lastInput = {0};
+        primaryStage.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_RELEASED, e -> lastInput[0] = System.currentTimeMillis());
+        primaryStage.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> lastInput[0] = System.currentTimeMillis());
         primaryStage.addEventFilter(javafx.event.ActionEvent.ACTION, e -> {
-            if (e.getTarget() instanceof Node n) countUiClick(n, true);
+            if (!(e.getTarget() instanceof Node n)) return;
+            // Пункт списка выбирают во всплывающем окне — его щелчок сюда не доходит, но сам список
+            // в этот момент в фокусе: его открыл человек.
+            boolean userCombo = n instanceof javafx.scene.control.ComboBoxBase<?> && n.isFocused();
+            if (!userCombo && System.currentTimeMillis() - lastInput[0] > 1500) return;
+            countUiClick(n, true);
         });
         primaryStage.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, e -> {
             if (!(e.getTarget() instanceof Node n)) return;

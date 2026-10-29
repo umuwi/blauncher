@@ -90,6 +90,10 @@ public class JavaDownloadService {
                     String[] parts = v.split("\\.");
                     if (parts.length >= 2) {
                         int minor = Integer.parseInt(parts[1]);
+                        // До 1.12.2 включительно Forge идёт через LaunchWrapper — на Java 9+ он падает с
+                        // ClassCastException «AppClassLoader cannot be cast to URLClassLoader» (проверено
+                        // 29.10.2026 на Forge 1.12.2 и Java 11). Раньше диапазон 8–11 пускал системную 11.
+                        if (minor <= 12) return new int[]{8, 8};
                         if (minor <= 16) return new int[]{8, 11};
                         if (minor <= 17) return new int[]{16, 17};
                         if (minor <= 20) return new int[]{17, 21};

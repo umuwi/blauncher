@@ -132,6 +132,35 @@ public class OnlineStatsService {
         }
     }
 
+    /**
+     * Отзыв, который человек написал сам (29.10.2026: «как выглядела игра на Rust»). Отдельно от
+     * event.php: там только латиница, а здесь русский текст. Уходит в фоне, только при включённой
+     * статистике. {@code gpu} — та же техническая подпись, что в отметке rustcraft_gpu.
+     */
+    public void feedback(String kind, String gpu, String text) {
+        ScheduledExecutorService s = scheduler;
+        if (s == null || s.isShutdown()) return;
+        try {
+            s.execute(() -> {
+                try {
+                    if (config != null && !config.isTelemetryEnabled()) return;
+                    com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+                    o.addProperty("id", instanceId);
+                    o.addProperty("v", LAUNCHER_VERSION);
+                    o.addProperty("k", kind);
+                    o.addProperty("g", gpu == null ? "" : gpu.replaceAll("[^A-Za-z0-9 .:=_\\-]", ""));
+                    String t = text == null ? "" : text.strip();
+                    o.addProperty("t", t.length() > 500 ? t.substring(0, 500) : t);
+                    Http.post(BASE_URL + "/feedback.php", o.toString(), "application/json; charset=utf-8",
+                            java.util.Map.of("User-Agent", "BLauncher/" + LAUNCHER_VERSION), HTTP_TIMEOUT);
+                } catch (Exception ignored) {
+                    // как и события: не показываем и не повторяем
+                }
+            });
+        } catch (Exception ignored) {
+        }
+    }
+
     /** Random anonymous id, generated once per install and persisted so the same machine isn't
      *  counted as a brand-new user on every launch. */
     private String loadOrCreateInstanceId() {
