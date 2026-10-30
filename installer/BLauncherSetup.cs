@@ -2013,8 +2013,12 @@ namespace BLauncherSetup
                 sink.At(0.10);
                 Stats.Mark(run, "zip_verify");
                 // Файл выбрал сам пользователь через /ZIP= или кнопку «Из ZIP-файла…» —
-                // сверять его не с чем, и отказываться тут не за что.
-                VerifyHash(job.ZipPath, job.ZipSha256, true);
+                // сверять его не с чем, и отказываться тут не за что. Раньше сюда шёл sha256Zip
+                // полного архива последней версии, и любой другой файл — архив без Java
+                // (blauncher-launcher.zip с того же сайта) или ZIP прошлой версии — падал с
+                // sha_mismatch: 29–30.10.2026 так шесть раз (b8213869, a4af4e41). Содержимое всё
+                // равно проверяет Zip.Inspect ниже.
+                VerifyHash(job.ZipPath, "", true);
                 // Архив лаунчера без Java (blauncher-launcher.zip) — тоже годится: Java вшита в этот
                 // exe. 20.10.2026 (3cdff403) три попытки «Из ZIP-файла…» подряд кончились отказом
                 // «нет папки runtime», и человек так и не поставил лаунчер.
@@ -2128,11 +2132,27 @@ namespace BLauncherSetup
             if (job.Launch)
             {
                 sink.Say("Запускаю лаунчер…");
-                ProcessStartInfo start = new ProcessStartInfo(exe);
-                start.WorkingDirectory = job.Dir;
-                start.UseShellExecute = true;
-                Process.Start(start);
-                Log.Write("запущен " + exe);
+                // Лаунчер уже установлен — неудачный запуск не должен превращать установку в «ошибку».
+                // 29.10.2026 ffbd9aa5 дважды получил fail Win32Exception на «uninstall_reg»: стадия
+                // оставалась от AfterExtract, а падал этот Process.Start (обычно антивирус держит
+                // только что распакованный BLauncher.exe). Метка launch — в detail, если что-то ещё.
+                if (run != null) run.Step = "launch";
+                try
+                {
+                    ProcessStartInfo start = new ProcessStartInfo(exe);
+                    start.WorkingDirectory = job.Dir;
+                    start.UseShellExecute = true;
+                    Process.Start(start);
+                    Log.Write("запущен " + exe);
+                }
+                catch (Exception ex)
+                {
+                    Log.Write("запуск лаунчера: " + ex.GetType().Name + ": " + ex.Message);
+                    done += "\nЛаунчер установлен, но Windows не дала запустить его сразу (часто так делает антивирус"
+                          + " с только что скачанной программой). Откройте BLauncher ярлыком на рабочем столе.";
+                    sink.Say("Готово. " + done);
+                }
+                if (run != null) run.Step = null;
             }
 
             return done;

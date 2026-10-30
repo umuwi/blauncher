@@ -4723,7 +4723,23 @@ public class MainController {
                 String modLoaderVersion = null;
                 Path rustcraftExe = null;
                 String rustcraftJava = null;
-                if ("rustcraft".equals(modLoader)) {
+                // Нет драйвера видеокарты — Rust не запускаем вовсе: без него движок готовится на процессоре
+                // минутами и потом жёстко лагает (2dd3373f, 29.10.2026: 10 минут запуска, «лагало жоско»).
+                // Тот же запуск идёт обычной Java-версией, а человеку объясняем, что поставить драйвер.
+                boolean rustNoDriver = "rustcraft".equals(modLoader) && Os.isWindows()
+                        && RustcraftService.noGpuDriver(RustcraftService.windowsGpus());
+                if (rustNoDriver) {
+                    stat("engine_fallback", "exc=no_driver_pre");
+                    log("[RUSTCRAFT] На компьютере нет драйвера видеокарты — запускаю обычную Java-версию");
+                    Platform.runLater(() -> {
+                        if (homeEngineCombo != null) homeEngineCombo.getSelectionModel().select(ENGINE_JAVA);
+                        onHomeEngineSelected();
+                        showToast("На компьютере не установлен драйвер видеокарты, а без него Rust сильно тормозит. "
+                                + "Запускаю обычную Java-версию", "warning");
+                        showRustDriverTip("no_driver", false);
+                    });
+                }
+                if ("rustcraft".equals(modLoader) && !rustNoDriver) {
                     launchPhase = "loader";
                     setPlayButtonBusy("Установка Rustcraft…");
                     Platform.runLater(() -> homeStatusLabel.setText("Проверяю Rustcraft на GitHub…"));
@@ -4754,7 +4770,7 @@ public class MainController {
                         rustcraftJava = rustcraftSourceJava(javaPath);
                         log("[RUSTCRAFT] Первый запуск дольше: Rustcraft один раз готовит данные игры из 26.3 (несколько минут)");
                     }
-                } else if (modLoader != null && !"vanilla".equals(modLoader)) {
+                } else if (modLoader != null && !"vanilla".equals(modLoader) && !"rustcraft".equals(modLoader)) {
                     ModLoaderService.Loader loaderEnum = switch (modLoader) {
                         case "forge" -> ModLoaderService.Loader.FORGE;
                         case "fabric" -> ModLoaderService.Loader.FABRIC;
@@ -4982,8 +4998,32 @@ public class MainController {
                 if (pendingLaunchServer != null) log("[LAUNCH] Сразу заходим на сервер " + pendingLaunchServer);
                 gameLaunchService.setNextLaunchServer(pendingLaunchServer);
                 final boolean viaRustcraft = rustcraftExe != null;
+                // Одна встройка Intel — сразу DirectX 12 (см. RustcraftService.onlyIntelGpu). Проверяем
+                // один раз на установку; упадёт и DX12 — ветка вылета ниже вернёт Vulkan, как обычно.
+                if (viaRustcraft && Os.isWindows() && config.getRustcraftBackend().isEmpty()
+                        && !config.isRustcraftDx12Failed() && !config.isRustcraftGpuChecked()) {
+                    String vendors = RustcraftService.windowsGpuVendors();
+                    config.setRustcraftGpuChecked(true);
+                    if (RustcraftService.onlyIntelGpu(vendors)) {
+                        config.setRustcraftBackend("dx12");
+                        stat("engine_backend", "dx12 from=intel");
+                    }
+                    try { configService.saveConfig(config); } catch (Exception ignored) { }
+                }
+                // Драйверы видеокарт (29.10.2026): жалобы на картинку Rust — у NVIDIA, на ноутбуках с двумя
+                // видеокартами, а у нас только AMD; без версии драйвера не отличить старый драйвер от ошибки
+                // движка. Раз за работу лаунчера; очень старый драйвер — сразу подсказка обновить.
+                if (viaRustcraft && Os.isWindows() && !rustcraftDrvSent) {
+                    rustcraftDrvSent = true;
+                    List<RustcraftService.Gpu> gpus = RustcraftService.windowsGpus();
+                    String drv = RustcraftService.driverInfo(gpus);
+                    if (!drv.isEmpty()) stat("rustcraft_drv", drv);
+                    if (oldestDriverMonths(gpus) >= OLD_DRIVER_MONTHS) {
+                        Platform.runLater(() -> showRustDriverTip("old", false));
+                    }
+                }
                 final String rustcraftBackend = viaRustcraft && Os.isWindows() ? config.getRustcraftBackend() : "";
-                if (!rustcraftBackend.isEmpty()) log("[RUSTCRAFT] Графика: " + rustcraftBackend + " (после вылета на Vulkan)");
+                if (!rustcraftBackend.isEmpty()) log("[RUSTCRAFT] Графика: " + rustcraftBackend);
                 gameLaunchService.setNextEngine(rustcraftExe, rustcraftJava, rustcraftBackend);
                 // Строки запуска графики — отдельно: за долгую игру буфер вывода (300 000 символов)
                 // вытесняет начало, а по ним решается, переходить ли на DirectX 12.
@@ -5071,6 +5111,10 @@ public class MainController {
                             }
                             final String rcBe = viaRustcraft ? rustcraftApi(rcLog) : "";
                             if (viaRustcraft && crashed) stat("rustcraft_crash", rustcraftCrashInfo(rcLog));
+                            if (viaRustcraft) {
+                                String set = RustcraftService.settingsInfo(gameDir);
+                                if (!set.isEmpty()) stat("rustcraft_set", set);
+                            }
                             finishLaunchAttempt();
                             if (skinServerForExit[0] != null) {
                                 skinServerForExit[0].close();
@@ -5134,8 +5178,11 @@ public class MainController {
                                     config.setRustcraftBackend("dx12");
                                     try { configService.saveConfig(config); } catch (Exception ignored) { }
                                     stat("engine_backend", "dx12 from=vk min=" + crashMinutes + " code=" + exitCode);
-                                    Platform.runLater(() -> showToast("Rustcraft упал на графике Vulkan. Следующий запуск "
-                                            + "попробует DirectX 12 — нажмите «Играть» ещё раз", "warning"));
+                                    Platform.runLater(() -> {
+                                        showToast("Rustcraft упал на графике Vulkan. Следующий запуск "
+                                                + "попробует DirectX 12 — нажмите «Играть» ещё раз", "warning");
+                                        showRustDriverTip("crash", true);
+                                    });
                                 } else if (viaRustcraft && crashMinutes < 2) {
                                     // Rustcraft — чужой экспериментальный движок. 28.10.2026 за час четверо
                                     // новичков выбрали «язык игры: Rust», и у всех он падал через 5–60 с
@@ -5157,9 +5204,11 @@ public class MainController {
                                         onHomeEngineSelected();
                                         showToast("Rustcraft (язык игры Rust) не запустился на этом компьютере — это пробный движок. "
                                                 + "Переключил обратно на обычную Java: нажмите «Играть»", "warning");
+                                        showRustDriverTip("fallback", false);
                                     });
                                 } else {
                                     if (!reportModConflictIfAny(capturedLog)) reportCrash(exitCode, why);
+                                    if (viaRustcraft) Platform.runLater(() -> showRustDriverTip("crash", true));
                                 }
                                 offerModDoctor(playtimeTarget, capturedLog, why);
                             } else if (ModDoctor.loaderRefused(capturedLog)) {
@@ -6114,6 +6163,129 @@ public class MainController {
         return ask.showAndWait().orElse(no) == yes;
     }
 
+    /** Отметку rustcraft_drv уже отправили за эту работу лаунчера. */
+    private volatile boolean rustcraftDrvSent;
+    /** Драйвер старше этого — подсказка обновить ещё до проблем. */
+    static final int OLD_DRIVER_MONTHS = 18;
+    /** Подсказку про драйвер показываем не чаще раза в двое суток — иначе она надоест раньше, чем поможет. */
+    private static final long DRIVER_TIP_EVERY_MS = 2L * 24 * 3600 * 1000;
+
+    /** Возраст самого старого драйвера в месяцах; -1 — даты не знаем. */
+    static int oldestDriverMonths(List<RustcraftService.Gpu> gpus) {
+        int max = -1;
+        for (RustcraftService.Gpu g : gpus) max = Math.max(max, g.ageMonths());
+        return max;
+    }
+
+    /** «примерно 2 года» / «полтора года» / «год» — возраст драйвера простыми словами. */
+    static String driverAgeWords(int months) {
+        if (months >= 24) {
+            int y = months / 12;
+            return y + (y % 10 >= 2 && y % 10 <= 4 && (y % 100 < 12 || y % 100 > 14) ? " года" : " лет");
+        }
+        return months >= 18 ? "полтора года" : "год";
+    }
+
+    /** Где обновить драйвер — без ссылок на сайты (решение владельца 29.10: скачают не тот файл). */
+    static String driverUpdateHow(List<RustcraftService.Gpu> gpus) {
+        java.util.Set<String> lines = new java.util.LinkedHashSet<>();
+        for (RustcraftService.Gpu g : gpus) {
+            // Без драйвера программы NVIDIA/AMD ещё нет — ставить через Центр обновления Windows.
+            lines.add(switch (g.basic() ? "?" : g.vendor()) {
+                case "nv" -> "• NVIDIA: откройте программу «NVIDIA App» или «GeForce Experience» → «Драйверы» → "
+                        + "«Проверить обновления» → «Загрузить».";
+                case "amd" -> "• AMD: откройте «AMD Software: Adrenalin Edition» → «Проверить наличие обновлений».";
+                default -> "• Параметры Windows → «Центр обновления Windows» → «Дополнительные параметры» → "
+                        + "«Необязательные обновления» → «Обновления драйверов» (кнопка ниже открывает это окно).";
+            });
+        }
+        if (lines.isEmpty()) lines.add("• Параметры Windows → «Центр обновления Windows» → «Дополнительные параметры» → "
+                + "«Необязательные обновления» → «Обновления драйверов» (кнопка ниже открывает это окно).");
+        return String.join("\n", lines) + "\n";
+    }
+
+    /**
+     * «Обновите драйвер видеокарты» простыми словами (29.10.2026, просьба владельца): жалобы на Rust — тёмный
+     * мир, рябь после сворачивания, вылеты — почти все с NVIDIA и ноутбуков с двумя видеокартами, а Rust
+     * зависит от драйвера сильнее, чем Java-версия. why — crash|fallback|look|old (в отметку driver_tip);
+     * offerJava — показать кнопку «Играть на Java» (после fallback лаунчер уже переключил сам).
+     */
+    private void showRustDriverTip(String why, boolean offerJava) {
+        if (!Os.isWindows()) return;
+        long now = System.currentTimeMillis();
+        if (now - config.getRustcraftDriverTipAt() < DRIVER_TIP_EVERY_MS) return;
+        config.setRustcraftDriverTipAt(now);
+        try { configService.saveConfig(config); } catch (Exception ignored) { }
+        List<RustcraftService.Gpu> gpus = RustcraftService.windowsGpus();
+        int age = oldestDriverMonths(gpus);
+        boolean two = RustcraftService.hybridGpu(gpus);
+
+        boolean noDriver = "no_driver".equals(why) || RustcraftService.noGpuDriver(gpus);
+        StringBuilder body = new StringBuilder();
+        if (noDriver) {
+            body.append("На компьютере не установлен драйвер видеокарты — программа, через которую Windows "
+                    + "управляет видеокартой. Без неё видеокарта не работает, и игру рисует процессор: "
+                    + "Rust из-за этого запускается минутами и сильно тормозит, обычная версия тоже медленнее.\n\n"
+                    + "Поэтому сейчас запускается обычная версия на Java.\n\n");
+        }
+        body.append("Rust — новый способ запуска Minecraft. Он рисует игру по-другому, чем обычная версия на Java, "
+                + "и намного сильнее зависит от драйвера видеокарты — программы, через которую Windows "
+                + "управляет видеокартой.\n\n");
+        if (!noDriver) body.append("Если драйвер старый, бывает так: игра вылетает, мир тёмный или серый, картинка рябит "
+                + "или становится мутной после сворачивания окна.\n\n");
+        if (age >= 12) {
+            body.append("Ваш драйвер видеокарты старый — ему примерно ").append(driverAgeWords(age)).append(".\n\n");
+        }
+        if (two) {
+            body.append("У вас две видеокарты (так обычно у ноутбуков). На таких компьютерах проблемы бывают "
+                    + "чаще всего — обновите драйверы обеих.\n\n");
+        }
+        body.append("Что сделать:\n");
+        body.append(noDriver ? "1. Установите драйвер видеокарты:\n" : "1. Обновите драйвер видеокарты:\n")
+                .append(driverUpdateHow(gpus));
+        body.append("2. Перезагрузите компьютер и снова нажмите «Играть».\n");
+        body.append("3. Не помогло — выберите «Язык игры: Java». Обычная версия работает на любой видеокарте.");
+
+        Alert tip = new Alert(Alert.AlertType.INFORMATION);
+        tip.initOwner(primaryStage);
+        tip.setTitle("BLauncher");
+        tip.setHeaderText(noDriver ? "Не установлен драйвер видеокарты"
+                : "Rust может работать плохо из-за драйвера видеокарты");
+        javafx.scene.control.TextArea text = new javafx.scene.control.TextArea(body.toString());
+        text.setEditable(false);
+        text.setWrapText(true);
+        text.setPrefRowCount(14);
+        text.setPrefColumnCount(52);
+        tip.getDialogPane().setContent(text);
+        ButtonType ok = new ButtonType("Понятно", ButtonBar.ButtonData.OK_DONE);
+        ButtonType wu = new ButtonType("Открыть Центр обновления", ButtonBar.ButtonData.OTHER);
+        ButtonType toJava = new ButtonType("Играть на Java", ButtonBar.ButtonData.OTHER);
+        if (offerJava) tip.getButtonTypes().setAll(wu, toJava, ok);
+        else tip.getButtonTypes().setAll(wu, ok);
+        stat("driver_tip", "why=" + why + " age=" + age + (two ? " hybrid=1" : ""));
+        // show(), а не showAndWait(): «old» показывается, пока игра запускается, — ничего не ждём.
+        tip.setOnHidden(e -> {
+            ButtonType r = tip.getResult();
+            if (r == wu) {
+                stat("driver_tip", "act=wu why=" + why);
+                executor.submit(() -> {
+                    try {
+                        new ProcessBuilder("cmd", "/c", "start", "", "ms-settings:windowsupdate-optionalupdates")
+                                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+                    } catch (Exception ignored) {
+                        // нет такой страницы (старая Windows) — человек откроет параметры сам
+                    }
+                });
+            } else if (r == toJava) {
+                stat("driver_tip", "act=java why=" + why);
+                if (homeEngineCombo != null) homeEngineCombo.getSelectionModel().select(ENGINE_JAVA);
+                onHomeEngineSelected();
+                showToast("Переключил на обычную Java — нажмите «Играть»", "info");
+            }
+        });
+        tip.show();
+    }
+
     /** Видеокарта последнего запуска Rustcraft («be=vk gpu=…») — к отзыву о картинке. */
     private volatile String lastRustcraftGpu = "";
 
@@ -6148,6 +6320,7 @@ public class MainController {
                 onlineStatsService.feedback("rustcraft_look", gpu, text);
                 showToast("Спасибо! Описание отправлено — посмотрим, что можно исправить", "info");
             }
+            showRustDriverTip("look", true);
         } else {
             stat("rustcraft_look", "skip " + gpu);
         }

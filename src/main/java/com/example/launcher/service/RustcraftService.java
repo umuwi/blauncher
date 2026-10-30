@@ -28,9 +28,10 @@ import java.util.zip.ZipInputStream;
  * лаунчере это «язык игры: Rust» на карточке «Без модов и сборок»: версия ставится как обычная 26.3, а запускается не java.exe, а
  * rustcraft.exe с теми же аргументами игры (--username, --uuid, --accessToken, --quickPlay…).
  *
- * <p>Программа лежит в &lt;gameDir&gt;/engines/rustcraft/&lt;тег выпуска&gt;/. При каждом запуске
- * спрашиваем GitHub о последнем выпуске; нет сети или GitHub ответил ошибкой — берём уже скачанный.
- * Архив сверяется с sha256, который GitHub сам считает для каждого файла выпуска.
+ * <p>Программа лежит в &lt;gameDir&gt;/engines/rustcraft/&lt;тег выпуска&gt;/. С 29.10.2026 движок —
+ * наша сборка (исправления поверх выпусков автора, тег вида v0.0.1-bl1) с blauncher.ru/rustcraft/;
+ * сайт недоступен — берём уже скачанный, а GitHub автора — только если не скачано ничего.
+ * Архив сверяется с sha256 (из latest.txt зеркала или от GitHub).
  */
 public class RustcraftService {
 
@@ -51,6 +52,189 @@ public class RustcraftService {
         this.root = gameDir.resolve("engines").resolve("rustcraft");
     }
 
+    /**
+     * Видеокарта Windows: производитель (VEN_xxxx), версия и дата драйвера ("" — Windows не сказала);
+     * basic — драйвера нет, Windows подставила свой «Базовый видеоадаптер (Майкрософт)».
+     */
+    public record Gpu(String ven, String driver, String date, boolean basic) {
+        /** Короткое имя производителя для отметок и подсказки: nv, amd, intel или код. */
+        public String vendor() {
+            return switch (ven) {
+                case "VEN_10DE" -> "nv";
+                case "VEN_1002", "VEN_1022" -> "amd";
+                case "VEN_8086" -> "intel";
+                default -> ven.replace("VEN_", "");
+            };
+        }
+
+        /** Сколько месяцев драйверу; -1 — дата неизвестна. */
+        public int ageMonths() {
+            try {
+                java.time.LocalDate d = java.time.LocalDate.parse(date);
+                return (int) java.time.temporal.ChronoUnit.MONTHS.between(d, java.time.LocalDate.now());
+            } catch (Exception e) {
+                return -1;
+            }
+        }
+    }
+
+    private static volatile List<Gpu> gpuCache;
+    /** Почему список пуст: timeout | fail exc=… | none [skip=<шина_устройство>]; "" — не пуст. */
+    private static volatile String gpuStatus = "";
+
+    /**
+     * Видеокарты Windows — только настоящие PCI-устройства (виртуальные экраны, удалённый рабочий стол
+     * и Basic Render в счёт не идут). Спрашиваем Windows один раз за работу лаунчера: powershell — это
+     * секунда-две. Пустой список — не узнали.
+     */
+    public static List<Gpu> windowsGpus() {
+        List<Gpu> cached = gpuCache;
+        if (cached != null) return cached;
+        if (!Os.isWindows()) return gpuCache = List.of();
+        Path tmp = null;
+        try {
+            // Вывод — в файл, а не в поток: readAllBytes() до waitFor ждал бы зависший powershell
+            // без всякого таймаута, а это поток запуска игры — «Играть» висело бы вечно.
+            tmp = Files.createTempFile("bl-gpu-", ".txt");
+            Process p = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    "Get-CimInstance Win32_VideoController | ForEach-Object { $d = ''; "
+                            + "if ($_.DriverDate) { $d = $_.DriverDate.ToString('yyyy-MM-dd') }; "
+                            + "$_.PNPDeviceID + '|' + $_.DriverVersion + '|' + $d + '|' + $_.InfFilename }")
+                    .redirectErrorStream(true)
+                    .redirectOutput(tmp.toFile())
+                    .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("NUL")))
+                    .start();
+            if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                gpuStatus = "timeout";
+                return gpuCache = List.of();
+            }
+            // ISO-8859-1: коды устройств — латиница, а русский текст ошибки в UTF-8 бросил бы исключение.
+            String out = Files.readString(tmp, java.nio.charset.StandardCharsets.ISO_8859_1);
+            List<Gpu> gpus = new java.util.ArrayList<>();
+            String firstSkipped = null;
+            for (String line : out.split("\\R")) {
+                String[] f = line.trim().split("\\|", -1);
+                if (f[0].isEmpty()) continue;
+                String inf = f.length > 3 ? f[3].trim().toLowerCase() : "";
+                String driver = f.length > 1 && f[1].matches("[0-9.]{1,30}") ? f[1] : "";
+                String date = f.length > 2 && f[2].matches("\\d{4}-\\d{2}-\\d{2}") ? f[2] : "";
+                // display.inf — «Базовый видеоадаптер (Майкрософт)»: устройство есть, драйвера производителя нет.
+                boolean basic = inf.equals("display.inf") || inf.equals("basicdisplay.inf");
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^PCI\\\\(VEN_[0-9A-F]{4})")
+                        .matcher(f[0].toUpperCase());
+                if (m.find() && !"VEN_1414".equals(m.group(1))) {   // 1414 — Microsoft
+                    gpus.add(new Gpu(m.group(1), driver, date, basic));
+                } else if (basic) {
+                    // Базовый адаптер не на PCI (30.10.2026 bfd02baf: Basic Render, а список был пустой —
+                    // проверка «нет драйвера» промахнулась, Rust 8 минут собирался на процессоре).
+                    gpus.add(new Gpu("BASIC", driver, date, true));
+                } else if (firstSkipped == null) {
+                    // Только тип шины и устройства («ROOT_BASICRENDER»), без серийных хвостов.
+                    String[] id = f[0].toUpperCase().split("\\\\");
+                    firstSkipped = (id[0] + (id.length > 1 ? "_" + id[1] : "")).replaceAll("[^A-Z0-9_&]", "");
+                    if (firstSkipped.length() > 40) firstSkipped = firstSkipped.substring(0, 40);
+                }
+            }
+            // Есть настоящая видеокарта — базовый адаптер не на PCI лишний: иначе он считался бы второй
+            // видеокартой (hybridGpu, «у вас две видеокарты») и ломал onlyIntelGpu.
+            if (gpus.stream().anyMatch(g -> !"BASIC".equals(g.ven()))) gpus.removeIf(g -> "BASIC".equals(g.ven()));
+            gpuStatus = gpus.isEmpty() ? "none" + (firstSkipped != null ? " skip=" + firstSkipped : "") : "";
+            return gpuCache = List.copyOf(gpus);
+        } catch (Exception e) {
+            // Неудачу тоже запоминаем: подсказку о драйвере зовут из потока окна, и второй
+            // зависший powershell подвесил бы лаунчер ещё на 10 с.
+            gpuStatus = "fail exc=" + e.getClass().getSimpleName();
+            return gpuCache = List.of();
+        } finally {
+            if (tmp != null) try { Files.deleteIfExists(tmp); } catch (Exception ignored) { }
+        }
+    }
+
+    /** Настройки графики из options.txt → короткое имя в отметке rustcraft_set. */
+    private static final String[][] RUST_SETTINGS = {
+            {"graphicsPreset", "p"}, {"renderDistance", "rd"}, {"simulationDistance", "sd"}, {"gamma", "g"},
+            {"maxFps", "fps"}, {"enableVsync", "vs"}, {"fullscreen", "fs"}, {"improvedTransparency", "it"},
+            {"textureFiltering", "tf"}, {"mipmapLevels", "mm"}, {"ao", "ao"}, {"entityShadows", "es"},
+            {"renderClouds", "cl"}, {"biomeBlendRadius", "bb"}, {"guiScale", "gs"}, {"fov", "fov"},
+    };
+
+    /**
+     * Графика, с которой играли на Rust (29.10.2026: RTX 2060 «всё тёмное после настройки», а какую
+     * настройку меняли — не узнать). Только числа и слова из фиксированного списка ключей options.txt,
+     * «p=fancy rd=16 g=0.5 …»; "" — файла нет.
+     */
+    public static String settingsInfo(Path gameDir) {
+        Map<String, String> vals = new java.util.HashMap<>();
+        try {
+            for (String line : Files.readAllLines(gameDir.resolve("options.txt"), java.nio.charset.StandardCharsets.ISO_8859_1)) {
+                int i = line.indexOf(':');
+                if (i > 0) vals.put(line.substring(0, i), line.substring(i + 1).replace("\"", "").trim());
+            }
+        } catch (Exception e) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String[] k : RUST_SETTINGS) {
+            String v = vals.get(k[0]);
+            if (v == null || !v.matches("[A-Za-z0-9.-]{1,10}")) continue;
+            if (v.matches("-?\\d+\\.\\d{3,}")) v = v.substring(0, v.indexOf('.') + 3);   // 0.5000000 → 0.50
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(k[1]).append('=').append(v);
+        }
+        return sb.length() > 120 ? sb.substring(0, 120) : sb.toString();
+    }
+
+    /**
+     * Ни у одной видеокарты нет драйвера производителя — Windows рисует процессором (Basic Render).
+     * 29.10.2026 у 2dd3373f Rust так запускался 10 минут и «лагал жёстко»; таких пятеро за двое суток.
+     */
+    public static boolean noGpuDriver(List<Gpu> gpus) {
+        return !gpus.isEmpty() && gpus.stream().allMatch(Gpu::basic);
+    }
+
+    /** Видеокарты одной строкой «VEN_xxxx;VEN_yyyy»; "" — не узнали. */
+    public static String windowsGpuVendors() {
+        StringBuilder ven = new StringBuilder();
+        for (Gpu g : windowsGpus()) {
+            if (ven.length() > 0) ven.append(';');
+            ven.append(g.ven());
+        }
+        return ven.toString();
+    }
+
+    /**
+     * Две видеокарты — обычно ноутбук, где встройка выводит картинку, а NVIDIA/AMD считает. Здесь
+     * DirectX 12 после смены размера окна рисует со сдвигом (известная ошибка драйверов, wgpu
+     * known_driver_issues, «Intel/DX12 offset after resizing … dual-GPU»), Vulkan тоже капризнее.
+     */
+    public static boolean hybridGpu(List<Gpu> gpus) {
+        return gpus.size() >= 2;
+    }
+
+    /** Отметка rustcraft_drv: «gpus=2 hybrid=1 nv=31.0.15.3623:2023-05 intel=…»; "" — Windows не ответила. */
+    public static String driverInfo(List<Gpu> gpus) {
+        // Пустой список — тоже в отметку: без неё bfd02baf (Basic Render) был не виден вовсе.
+        if (gpus.isEmpty()) return Os.isWindows() ? "gpus=0 " + gpuStatus : "";
+        StringBuilder sb = new StringBuilder("gpus=" + gpus.size() + (hybridGpu(gpus) ? " hybrid=1" : ""));
+        for (Gpu g : gpus) {
+            sb.append(' ').append(g.vendor()).append('=').append(g.driver().isEmpty() || g.basic() ? "none" : g.driver());
+            if (g.date().length() >= 7) sb.append(':').append(g.date(), 0, 7);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Только встройка Intel (VEN_8086) без дискретной видеокарты. На ней Rustcraft на Vulkan падает
+     * сразу при выборе видеокарты (0xC0000005, step=adapter, 2 из 2 за 29.10.2026), а на DirectX 12
+     * идёт нормально — таким сразу даём DX12, без лишнего первого вылета.
+     */
+    public static boolean onlyIntelGpu(String vendors) {
+        if (vendors == null || vendors.isEmpty()) return false;
+        for (String v : vendors.split(";")) if (!"VEN_8086".equals(v)) return false;
+        return true;
+    }
+
     /** Linux x86-64 и Windows x64 — других сборок у проекта нет. */
     public static boolean platformSupported() {
         String arch = System.getProperty("os.arch", "").toLowerCase();
@@ -66,30 +250,34 @@ public class RustcraftService {
         if (!platformSupported()) {
             throw new IOException("Rustcraft есть только для Windows x64 и Linux x86-64");
         }
-        JsonObject release;
+        // Наша сборка первой: в выпуске автора нет наших исправлений (картинка после сворачивания и др.),
+        // а GitHub без входа даёт 60 запросов в час на адрес (28.10.2026, aa421f38 — запуск сорвался).
         try {
-            Http.Response r = Http.get(API, GITHUB_HEADERS, Duration.ofSeconds(15));
-            if (!r.ok()) throw new IOException("GitHub ответил " + r.status());
-            release = JsonParser.parseString(r.text()).getAsJsonObject();
-        } catch (Exception e) {
+            return installFromMirror(log);
+        } catch (Exception mirrorEx) {
             Path installed = newestInstalled();
             if (installed != null) {
-                log.accept("[RUSTCRAFT] GitHub недоступен (" + e.getMessage() + ") — беру уже скачанный "
+                log.accept("[RUSTCRAFT] blauncher.ru недоступен (" + mirrorEx.getMessage() + ") — беру уже скачанный "
                         + installed.getParent().getFileName());
                 return installed;
             }
-            // 28.10.2026 (aa421f38): GitHub ответил ошибкой (без входа — 60 запросов в час на адрес),
-            // а скачанного ещё не было — запуск сорвался. Тот же архив лежит у нас на сайте.
-            log.accept("[RUSTCRAFT] GitHub недоступен (" + e.getMessage() + ") — качаю с blauncher.ru");
+            log.accept("[RUSTCRAFT] blauncher.ru недоступен (" + mirrorEx.getMessage() + ") — качаю выпуск автора с GitHub");
             try {
-                return installFromMirror(log);
-            } catch (Exception mirrorEx) {
-                IOException io = new IOException("Не удалось скачать Rustcraft ни с GitHub, ни с blauncher.ru: "
+                return installFromGithub(log);
+            } catch (Exception e) {
+                IOException io = new IOException("Не удалось скачать Rustcraft ни с blauncher.ru, ни с GitHub: "
                         + e.getMessage(), e);
                 io.addSuppressed(mirrorEx);
                 throw io;
             }
         }
+    }
+
+    /** Последний выпуск автора с GitHub — запасной путь, когда наш сайт недоступен и ничего не скачано. */
+    private Path installFromGithub(Consumer<String> log) throws IOException {
+        Http.Response r = Http.get(API, GITHUB_HEADERS, Duration.ofSeconds(15));
+        if (!r.ok()) throw new IOException("GitHub ответил " + r.status());
+        JsonObject release = JsonParser.parseString(r.text()).getAsJsonObject();
 
         String tag = safeName(release.get("tag_name").getAsString());
         Path exe = root.resolve(tag).resolve(exeName());
@@ -114,7 +302,7 @@ public class RustcraftService {
                 digest != null && digest.startsWith("sha256:") ? digest.substring(7) : null, log);
     }
 
-    /** Копия последнего выпуска на нашем сайте: latest.txt = «тег имя-архива sha256» по строке на ОС. */
+    /** Наша сборка на сайте: latest.txt = «тег имя-архива sha256» по строке на ОС. */
     static final String MIRROR = "https://blauncher.ru/rustcraft/";
 
     private Path installFromMirror(Consumer<String> log) throws IOException {
@@ -280,7 +468,7 @@ public class RustcraftService {
     private Path newestInstalled() throws IOException {
         if (!Files.isDirectory(root)) return null;
         try (Stream<Path> s = Files.list(root)) {
-            return s.filter(p -> !p.getFileName().toString().endsWith(".tmp"))
+            return s.filter(p -> !p.getFileName().toString().endsWith(".tmp") && !isCacheDir(p))
                     .map(p -> p.resolve(exeName()))
                     .filter(Files::isRegularFile)
                     .max((a, b) -> Long.compare(a.toFile().lastModified(), b.toFile().lastModified()))
@@ -288,10 +476,17 @@ public class RustcraftService {
         }
     }
 
+    /** engines/rustcraft/cache — данные игры (RUSTCRAFT_CACHE), а не выпуск движка. */
+    private boolean isCacheDir(Path p) {
+        return p.getFileName().toString().equals("cache");
+    }
+
     private void removeOldReleases(String keep) {
         try (Stream<Path> s = Files.list(root)) {
             for (Path p : s.toList()) {
-                if (Files.isDirectory(p) && !p.getFileName().toString().equals(keep)) deleteRecursively(p);
+                // Кэш не трогаем: иначе смена выпуска стирала бы готовые данные игры и запуск
+                // снова ждал бы их пересборки (до минуты, с Java).
+                if (Files.isDirectory(p) && !isCacheDir(p) && !p.getFileName().toString().equals(keep)) deleteRecursively(p);
             }
         } catch (IOException ignored) {
             // старый выпуск остался на диске — не повод мешать запуску

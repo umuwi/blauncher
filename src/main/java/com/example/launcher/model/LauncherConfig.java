@@ -29,6 +29,10 @@ public class LauncherConfig {
     private String rustcraftBackend = "";
     /** DirectX 12 у Rustcraft уже падал на этом компьютере — на него больше не переключаемся (29.10.2026). */
     private boolean rustcraftDx12Failed;
+    /** Видеокарты для выбора Vulkan/DX12 уже проверяли (один раз на установку, 29.10.2026). */
+    private boolean rustcraftGpuChecked;
+    /** Когда последний раз показали «Обновите драйвер видеокарты» для Rust (мс, 29.10.2026); 0 — не показывали. */
+    private long rustcraftDriverTipAt;
     /** Спросили ли «Как выглядела игра на Rust?» — спрашиваем один раз на установку (29.10.2026). */
     private boolean rustcraftLookAsked;
     /**
@@ -240,6 +244,22 @@ public class LauncherConfig {
 
     public void setRustcraftDx12Failed(boolean rustcraftDx12Failed) {
         this.rustcraftDx12Failed = rustcraftDx12Failed;
+    }
+
+    public boolean isRustcraftGpuChecked() {
+        return rustcraftGpuChecked;
+    }
+
+    public void setRustcraftGpuChecked(boolean rustcraftGpuChecked) {
+        this.rustcraftGpuChecked = rustcraftGpuChecked;
+    }
+
+    public long getRustcraftDriverTipAt() {
+        return rustcraftDriverTipAt;
+    }
+
+    public void setRustcraftDriverTipAt(long rustcraftDriverTipAt) {
+        this.rustcraftDriverTipAt = rustcraftDriverTipAt;
     }
 
     public boolean isRustcraftLookAsked() {
