@@ -153,6 +153,78 @@ public class VersionDownloadService {
         throw lastFailure != null ? lastFailure : new IOException("Не удалось получить " + url);
     }
 
+    // 31.10.2026: у 8179990b maven.neoforged.net не открывался совсем (Modrinth и Mojang — да):
+    // 19 раз «no_build» за два дня, ни одной игры. На blauncher.ru стоит зеркало — nginx
+    // пропускает к maven.neoforged.net только releases/ и api/maven/versions/releases/ и держит
+    // кэш. Сначала всегда сам NeoForge (сервер у нас узкий), зеркало — когда тот не ответил;
+    // после этого до конца сеанса сначала зеркало, чтобы не ждать таймаутов на каждом файле.
+    private static final String NEOFORGE_HOST = "https://maven.neoforged.net/";
+    private static final String NEOFORGE_MIRROR = "https://blauncher.ru/mirror/neoforged/";
+    private volatile boolean neoForgeViaMirror;
+
+    /** Тот же адрес на зеркале blauncher.ru, или null, если это не maven.neoforged.net. */
+    public static String neoForgeMirrorUrl(String url) {
+        return url != null && url.startsWith(NEOFORGE_HOST)
+                ? NEOFORGE_MIRROR + url.substring(NEOFORGE_HOST.length()) : null;
+    }
+
+    /** Что-то с NeoForge в этом сеансе пришлось брать с зеркала. */
+    public boolean isNeoForgeViaMirror() {
+        return neoForgeViaMirror;
+    }
+
+    /** Порядок адресов для файла с maven.neoforged.net: см. комментарий к NEOFORGE_MIRROR. */
+    private List<String> neoForgeSources(String url) {
+        String mirror = neoForgeMirrorUrl(url);
+        if (mirror == null) return List.of(url);
+        return neoForgeViaMirror ? List.of(mirror, url) : List.of(url, mirror);
+    }
+
+    private void noteNeoForgeSource(String used, String url) {
+        boolean mirror = !used.equals(url);
+        if (mirror && !neoForgeViaMirror) {
+            System.err.println("[NEOFORGE] maven.neoforged.net не отвечает — беру с зеркала blauncher.ru");
+        }
+        neoForgeViaMirror = mirror;
+    }
+
+    private TextResponse neoForgeGet(String url) throws IOException, InterruptedException {
+        TextResponse first = null;
+        IOException failure = null;
+        for (String u : neoForgeSources(url)) {
+            try {
+                TextResponse r = httpGetStringRetry(u, null, u.equals(url) ? LOADER_LIST_ATTEMPTS : 2);
+                if (r.statusCode() == 200) {
+                    noteNeoForgeSource(u, url);
+                    return r;
+                }
+                if (first == null) first = r;
+            } catch (IOException e) {
+                if (failure == null) failure = e;
+                else failure.addSuppressed(e);
+            }
+        }
+        if (first != null) return first;
+        throw failure;
+    }
+
+    /** Скачать файл с maven.neoforged.net (установщик, библиотеку), при отказе — с зеркала. */
+    public void downloadNeoForgeFile(String url, Path dest, int maxRetries, String expectedSha1)
+            throws IOException, InterruptedException {
+        IOException failure = null;
+        for (String u : neoForgeSources(url)) {
+            try {
+                downloadFileWithRetries(u, dest, u.equals(url) ? maxRetries : 2, expectedSha1);
+                noteNeoForgeSource(u, url);
+                return;
+            } catch (IOException e) {
+                if (failure == null) failure = e;
+                else failure.addSuppressed(e);
+            }
+        }
+        throw failure;
+    }
+
     /** Releases only — unchanged behavior for existing callers. */
     public List<String> getAvailableVersions() throws IOException, InterruptedException {
         return getAvailableVersions(false);
@@ -463,7 +535,7 @@ public class VersionDownloadService {
         List<String> fresh = null;
 
         try {
-            TextResponse response = httpGetStringRetry(NEOFORGE_MAVEN_API, null, LOADER_LIST_ATTEMPTS);
+            TextResponse response = neoForgeGet(NEOFORGE_MAVEN_API);
             if (response.statusCode() == 200) {
                 JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
                 JsonArray versions = root.getAsJsonArray("versions");
@@ -481,7 +553,7 @@ public class VersionDownloadService {
         if (fresh == null || fresh.isEmpty()) {
             fresh = null;
             try {
-                TextResponse meta = httpGetStringRetry(NEOFORGE_MAVEN_METADATA, null, LOADER_LIST_ATTEMPTS);
+                TextResponse meta = neoForgeGet(NEOFORGE_MAVEN_METADATA);
                 if (meta.statusCode() == 200) {
                     List<String> fromMetadata = new ArrayList<>();
                     java.util.regex.Matcher m = java.util.regex.Pattern
@@ -518,7 +590,7 @@ public class VersionDownloadService {
      * версии игры — его установщика на сервере нет (404), отсекаем.
      */
     private List<String> fetchNeoForgeLegacyVersions() throws IOException, InterruptedException {
-        TextResponse response = httpGetStringRetry(NEOFORGE_LEGACY_MAVEN_API, null, LOADER_LIST_ATTEMPTS);
+        TextResponse response = neoForgeGet(NEOFORGE_LEGACY_MAVEN_API);
         if (response.statusCode() != 200) {
             throw new IOException("не удалось скачать список версий NeoForge для 1.20.1: HTTP " + response.statusCode());
         }

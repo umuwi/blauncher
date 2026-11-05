@@ -19,6 +19,17 @@ public class JavaDownloadService {
 
     private final Path gameDir;
     private final Path javaDir;
+    /**
+     * Запасная папка для Java вне папки лаунчера (%LOCALAPPDATA%\BLauncher\java-runtime); null —
+     * не Windows или папка лаунчера и так там. 31.10.2026: с 22.10 у 8 человек антивирус не дал
+     * распаковать Java в папку лаунчера («unpack:extract:AccessDenied» на всех трёх попытках), 5 из
+     * них так и не поиграли — 7901dea0 пробовал 40 минут. Если правило антивируса про папку, а не
+     * про сами файлы Java, в другом месте она встанет.
+     */
+    private final Path altJavaDir;
+    private volatile boolean usedAlt;
+    /** При распаковке пропущен ucrtbase.dll, который не дал записать антивирус (см. extractZip). */
+    private volatile boolean skippedUcrt;
     private final ConcurrentHashMap<String, int[]> versionRangeCache = new ConcurrentHashMap<>();
 
     /**
@@ -31,6 +42,16 @@ public class JavaDownloadService {
 
     public String lastFailTag() {
         return lastFailTag;
+    }
+
+    /** Java за этот запуск лаунчера встала в запасную папку (для отметки dl_done). */
+    public boolean usedAltDir() {
+        return usedAlt;
+    }
+
+    /** Java встала без своего ucrtbase.dll — его не дал записать антивирус (для отметки dl_done). */
+    public boolean skippedUcrt() {
+        return skippedUcrt;
     }
 
     /** Метки через «-», одинаковые подряд — одной с «x3»: в detail события всего 120 символов. */
@@ -56,9 +77,40 @@ public class JavaDownloadService {
                 ? name.substring(0, name.length() - "Exception".length()) : name;
     }
 
+    /**
+     * На каком файле споткнулись: «:f=jvm.dll». Только имя, без папок (в пути — имя пользователя
+     * Windows), без длинных чисел из имён временных папок; "" — не файловая ошибка. По нему видно,
+     * антивирус не пускает в папку целиком (первый же файл) или держит одну dll.
+     */
+    static String fileTag(IOException e) {
+        if (!(e instanceof FileSystemException fse) || fse.getFile() == null) return "";
+        String f = fse.getFile().replace('\\', '/');
+        f = f.substring(f.lastIndexOf('/') + 1).replaceAll("\\d{6,}", "").replaceAll("[^A-Za-z0-9_.-]", "");
+        if (f.length() > 20) f = f.substring(0, 20);
+        return f.isEmpty() ? "" : ":f=" + f;
+    }
+
+    static Path altRoot(Path javaDir) {
+        if (!isWindows()) return null;
+        String local = System.getenv("LOCALAPPDATA");
+        if (local == null || local.isBlank()) return null;
+        try {
+            Path alt = Path.of(local, "BLauncher", "java-runtime").toAbsolutePath().normalize();
+            return alt.equals(javaDir.toAbsolutePath().normalize()) ? null : alt;
+        } catch (InvalidPathException e) {
+            return null;
+        }
+    }
+
+    /** java.exe из запасной папки или null. */
+    private Path findAlt(String dirName) {
+        return altJavaDir == null ? null : findJavaIn(altJavaDir.resolve(dirName));
+    }
+
     public JavaDownloadService(Path gameDir) {
         this.gameDir = gameDir;
         this.javaDir = gameDir.resolve("java-runtime");
+        this.altJavaDir = altRoot(javaDir);
         try {
             Files.createDirectories(javaDir);
         } catch (IOException ignored) {
@@ -112,8 +164,10 @@ public class JavaDownloadService {
      */
     public Path getJavaExecutable(int version) {
         Path versionDir = javaDir.resolve(String.valueOf(version));
-        if (!Files.exists(versionDir)) return version == 21 ? ownRuntimeJava() : null;
-        return findJavaIn(versionDir);
+        Path exe = findJavaIn(versionDir);
+        if (exe == null) exe = findAlt(String.valueOf(version));
+        if (exe == null && version == 21 && !Files.exists(versionDir)) return ownRuntimeJava();
+        return exe;
     }
 
     private static Path findJavaIn(Path versionDir) {
@@ -243,6 +297,7 @@ public class JavaDownloadService {
     public String sourceLaunchJava(String current, Consumer<String> log, Http.Progress progress) throws Exception {
         if (current != null && canRunSourceFiles(Path.of(current))) return current;
         Path own = findJavaIn(javaDir.resolve("25c"));
+        if (own == null) own = findAlt("25c");
         if (own != null && canRunSourceFiles(own)) return own.toString();
         log.accept("[JAVA] Для Rustcraft нужна Java 25 с компилятором (jdk.compiler) — скачиваю один раз");
         return install("25c", 25, "jre-25c", false, log, progress);
@@ -288,7 +343,7 @@ public class JavaDownloadService {
         if (jreOk) sources.add(new String[]{"Adoptium JRE", String.format(adoptium, "jre"), "jre"});
         sources.add(new String[]{"Adoptium JDK", String.format(adoptium, "jdk"), "jdk"});
 
-        Path tempFile = Files.createTempFile("jre-" + dirName + "-", "." + osSuffix);
+        Path tempFile = downloadTarget(dirName, osSuffix);
         String errors = "";
         List<String> tags = new ArrayList<>();
         lastFailTag = "";
@@ -322,7 +377,7 @@ public class JavaDownloadService {
                         String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                         log.accept("[JAVA] " + src[0] + ": " + detail);
                         errors += src[0] + ": " + detail + "; ";
-                        tags.add(src[2] + ":" + failKind(e));
+                        tags.add(src[2] + ":" + failKind(e) + whereTag(e));
                     }
                 }
                 if (got) break;
@@ -348,8 +403,11 @@ public class JavaDownloadService {
             // Распаковка — до трёх раз, каждый раз в новую папку. 23.10.2026 (ac5cc6dc, 1.14.25):
             // антивирус запретил запись уже при распаковке («unpack:extract:AccessDenied»), и после
             // первой же ошибки новичок ушёл. Через несколько секунд проверка обычно заканчивается.
+            // Не помогло и с отказом в доступе — ещё три попытки в запасной папке (altJavaDir).
+            Path root = javaDir;
+            String firstFail = "";
             for (int attempt = 1; ; attempt++) {
-                Path staging = javaDir.resolve(dirName + ".part" + System.currentTimeMillis());
+                Path staging = root.resolve(dirName + ".part" + System.currentTimeMillis());
                 String step = "extract";
                 try {
                     Files.createDirectories(staging);
@@ -360,6 +418,7 @@ public class JavaDownloadService {
                     }
                     step = "move";
                     installStaged(staging, versionDir, log);
+                    if (root != javaDir) usedAlt = true;
                     break;
                 } catch (IOException e) {
                     try { deleteTree(staging); } catch (IOException ignored) { }
@@ -368,8 +427,20 @@ public class JavaDownloadService {
                         Thread.sleep(5000);
                         continue;
                     }
-                    lastFailTag = (lastFailTag.isEmpty() ? "" : lastFailTag + "-") + "unpack:" + step + ":" + failKind(e)
-                            + (attempt > 1 ? ":x" + attempt : "");
+                    String tag = (root != javaDir ? "alt:" : "unpack:") + step + ":" + failKind(e)
+                            + (attempt > 1 ? ":x" + attempt : "") + fileTag(e);
+                    if (root == javaDir && altJavaDir != null && e instanceof AccessDeniedException) {
+                        log.accept("[JAVA] В папку лаунчера не дают записать Java (антивирус?) — пробую " + altJavaDir);
+                        firstFail = tag;
+                        root = altJavaDir;
+                        versionDir = altJavaDir.resolve(dirName);
+                        attempt = 0;
+                        continue;
+                    }
+                    // В запасной папке то же самое — «alt:same»: в detail события всего 120 символов.
+                    if (!firstFail.isEmpty() && tag.substring(4).equals(firstFail.substring(7))) tag = "alt:same";
+                    lastFailTag = (lastFailTag.isEmpty() ? "" : lastFailTag + "-")
+                            + (firstFail.isEmpty() ? "" : firstFail + "-") + tag;
                     throw e;
                 }
             }
@@ -409,13 +480,54 @@ public class JavaDownloadService {
         }
     }
 
-    /** Остатки прошлых попыток (<версия>.part…); то, что ещё держит антивирус, оставляем до следующего раза. */
-    private void cleanupOldStaging(String dirName) {
-        try (var list = Files.list(javaDir)) {
-            for (Path p : list.filter(p -> p.getFileName().toString().startsWith(dirName + ".part")).toList()) {
-                try { deleteTree(p); } catch (IOException ignored) { }
+    /**
+     * Куда качать архив Java: в java-runtime, а не во временную папку Windows. 31.10.2026 у 7901dea0
+     * со второго «Играть» все пять загрузок кончились AccessDenied на переносе готового .part во
+     * временной папке — а подсказка советует внести в исключения антивируса папку лаунчера, и
+     * временную это не покрывает. Имя своё на каждую загрузку: две установки одной Java не должны
+     * писать в один файл. Нельзя писать в java-runtime — в запасную папку, потом во временную, как раньше.
+     */
+    private Path downloadTarget(String dirName, String osSuffix) throws IOException {
+        for (Path dir : altJavaDir == null ? List.of(javaDir) : List.of(javaDir, altJavaDir)) {
+            Path p = dir.resolve(dirName + ".dl" + System.currentTimeMillis() + "." + osSuffix);
+            try {
+                Files.createDirectories(dir);
+                Files.createFile(p);   // проба записи; Http.download пишет в .part рядом и переносит сюда
+                Files.delete(p);
+                return p;
+            } catch (IOException e) {
+                try { Files.deleteIfExists(p); } catch (IOException ignored) { }
             }
-        } catch (IOException ignored) { }
+        }
+        return Files.createTempFile("jre-" + dirName + "-", "." + osSuffix);
+    }
+
+    /** Где споткнулась загрузка: «:part» — запись или перенос .part, «:arc» — сам архив. */
+    private static String whereTag(IOException e) {
+        if (!(e instanceof FileSystemException fse) || fse.getFile() == null) return "";
+        return fse.getFile().endsWith(".part") ? ":part" : ":arc";
+    }
+
+    /**
+     * Остатки прошлых попыток (<версия>.part… в обеих папках, архивы <версия>.dl… старше часа —
+     * свежий может качать соседняя установка); то, что ещё держит антивирус, оставляем до следующего раза.
+     */
+    private void cleanupOldStaging(String dirName) {
+        long hourAgo = System.currentTimeMillis() - 3_600_000L;
+        for (Path dir : altJavaDir == null ? List.of(javaDir) : List.of(javaDir, altJavaDir)) {
+            if (!Files.isDirectory(dir)) continue;
+            try (var list = Files.list(dir)) {
+                for (Path p : list.toList()) {
+                    String n = p.getFileName().toString();
+                    try {
+                        if (n.startsWith(dirName + ".part")
+                                || n.startsWith(dirName + ".dl") && Files.getLastModifiedTime(p).toMillis() < hourAgo) {
+                            deleteTree(p);
+                        }
+                    } catch (IOException ignored) { }
+                }
+            } catch (IOException ignored) { }
+        }
     }
 
     /**
@@ -499,6 +611,14 @@ public class JavaDownloadService {
                         while ((len = zis.read(buffer)) > 0) {
                             os.write(buffer, 0, len);
                         }
+                    } catch (AccessDeniedException e) {
+                        // Антивирус не даёт записать ucrtbase.dll (01.11.2026, 3c109ab4: «f=ucrtbase.dll» и в
+                        // папке лаунчера, и в запасной). Это копия системной библиотеки Windows: в Windows 10
+                        // и новее она есть в System32, и Java берёт её оттуда — так же её пропускает и наш
+                        // установщик. Остальные файлы Java без замены не обойтись.
+                        if (!isWindows() || !dest.getFileName().toString().equalsIgnoreCase("ucrtbase.dll")) throw e;
+                        try { Files.deleteIfExists(dest); } catch (IOException ignored) { }
+                        skippedUcrt = true;
                     }
                 }
                 zis.closeEntry();

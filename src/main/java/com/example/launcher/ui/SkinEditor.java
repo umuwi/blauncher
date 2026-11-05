@@ -77,12 +77,14 @@ public final class SkinEditor implements AutoCloseable {
         void loadProfileTexture(boolean cape, Consumer<Image> onLoaded);
         /** "Инвертировать мышь" in Settings: dragging turns the model the other way. */
         default boolean invertMouse() { return false; }
+        /** На плащ поставили фото: для статистики. */
+        default void photoPlaced() { }
     }
 
     private enum Tool { PENCIL, ERASER, FILL, PICKER, SELECT, BLUR, LIGHTEN, DARKEN, NOISE, REPLACE }
 
     /** Pixels picked with the selection tool, for "lift to the outer layer". */
-    private final boolean[] selected = new boolean[TEX_W * 64];
+    private boolean[] selected;
     /** Brush size in texels for the pencil, eraser and selection brush. */
     private int brush = 1;
     private int selStartX = -1;
@@ -90,6 +92,7 @@ public final class SkinEditor implements AutoCloseable {
     private int selEndX = -1;
     private int selEndY = -1;
     private Label selectionInfo;
+    private HBox capeScaleRow;
     private VBox selectionActions;
 
     /** One rectangle of the texture that is a face of some box: the only places paint can go. */
@@ -103,13 +106,19 @@ public final class SkinEditor implements AutoCloseable {
     private record Box(float x, float y, float z, int w, int h, int d, int u, int v,
                        float px, float py, float pz, float grow, boolean outer) {}
 
-    private static final int TEX_W = 64;
+    /** Ширина развёртки при обычном разрешении. Плащ может быть крупнее (см. setCapeScale). */
+    private static final int BASE_W = 64;
+    /** Во сколько раз плащ крупнее обычных 64x32: игра растягивает его на ту же модель. */
+    private static final int[] CAPE_SCALES = {1, 2, 4, 8, 16};
     /** The texture is drawn on the model at this many texture pixels per texel (see class note). */
-    private static final int UPSCALE = 8;
+    private static final int MODEL_DETAIL = 8;
     private static final int UNDO_LIMIT = 80;
 
     private final boolean cape;
-    private final int texH;
+    private int texW = BASE_W;
+    private int texH;
+    private int scale = 1;
+    private int upscale = MODEL_DETAIL;
     private final Host host;
     private int[] pixels;
     private boolean slim;
@@ -121,7 +130,7 @@ public final class SkinEditor implements AutoCloseable {
     private boolean dirty;
 
     private final List<Face> faces = new ArrayList<>();
-    private final WritableImage modelTexture;
+    private WritableImage modelTexture;
     private final PhongMaterial material = new PhongMaterial();
     private final Group baseGroup = new Group();
     private final Group outerGroup = new Group();
@@ -144,10 +153,11 @@ public final class SkinEditor implements AutoCloseable {
         this.cape = cape;
         this.host = host;
         this.texH = cape ? 32 : 64;
+        allocate();
         this.pixels = cape ? defaultCape() : defaultSkin();
         this.cell = 8;
-        this.modelTexture = new WritableImage(TEX_W * UPSCALE, texH * UPSCALE);
-        this.canvas = new Canvas(TEX_W * cell, texH * cell);
+        this.modelTexture = new WritableImage(texW * upscale, texH * upscale);
+        this.canvas = new Canvas(texW * cell, texH * cell);
 
         rebuildFaces();
         material.setDiffuseMap(modelTexture);
@@ -226,6 +236,27 @@ public final class SkinEditor implements AutoCloseable {
                 toolButton(Tool.PICKER, "fth-crosshair", "skin_tool_picker"));
         if (!cape) toolButtons.getChildren().add(toolButton(Tool.SELECT, "fth-crop", "skin_tool_select"));
 
+        if (cape) {
+            capeScaleRow = new HBox(2);
+            capeScaleRow.getStyleClass().add("lang-toggle");
+            ToggleGroup scaleGroup = new ToggleGroup();
+            for (int k : CAPE_SCALES) {
+                ToggleButton b = new ToggleButton("×" + k);   // «1024×512» в этот ряд не влезает, размер в подсказке
+                b.setTooltip(new javafx.scene.control.Tooltip(BASE_W * k + " × " + 32 * k));
+                b.getStyleClass().add("lang-option");
+                b.setToggleGroup(scaleGroup);
+                b.setSelected(k == scale);
+                b.setOnAction(e -> {
+                    b.setSelected(true);
+                    setCapeScale(k, true);
+                });
+                b.setStyle("-fx-padding: 4 6; -fx-font-size: 12px;");   // пять кнопок в колонке 200: иначе вместо подписи многоточие
+                b.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+                b.setUserData(k);
+                capeScaleRow.getChildren().add(b);
+            }
+        }
+
         // brush size: 1-4 texels, for pencil, eraser and the selection brush
         HBox brushRow = new HBox(2);
         brushRow.getStyleClass().add("lang-toggle");
@@ -259,6 +290,7 @@ public final class SkinEditor implements AutoCloseable {
         Button redoBtn = iconButton("fth-corner-up-right", "skin_redo", this::redo);
         HBox history = new HBox(6, undoBtn, redoBtn);
 
+        if (cape) bar.getChildren().addAll(sectionLabel("cape_resolution"), capeScaleRow);
         bar.getChildren().addAll(toolsLabel, toolButtons, sectionLabel("skin_brush"), brushRow, history,
                 selectionActions, sectionLabel("skin_color"), colorPanel.node());
 
@@ -345,6 +377,7 @@ public final class SkinEditor implements AutoCloseable {
         nickRow.setVisible(!cape);
         nickRow.setManaged(!cape);
         Button open = wideButton("fth-folder", "skin_open_file", this::openFile);
+        Button photo = cape ? wideButton("fth-image", "cape_photo", this::choosePhoto) : null;
         Button fresh = wideButton("fth-file", "skin_new", this::newTexture);
         Button export = wideButton("fth-download", "skin_export", this::exportFile);
         Button picture = wideButton("fth-image", "skin_picture", this::savePicture);
@@ -353,7 +386,9 @@ public final class SkinEditor implements AutoCloseable {
         save.setMaxWidth(Double.MAX_VALUE);
         save.setOnAction(e -> saveToProfile());
 
-        bar.getChildren().addAll(grow, mine, nickRow, open, fresh, export, picture, save);
+        bar.getChildren().addAll(grow, mine, nickRow, open);
+        if (photo != null) bar.getChildren().add(photo);
+        bar.getChildren().addAll(fresh, export, picture, save);
         selectTool(Tool.PENCIL);
         // The column scrolls by itself when the window is short, so the editor as a whole always
         // fits the launcher and the page around it never has to scroll.
@@ -427,7 +462,7 @@ public final class SkinEditor implements AutoCloseable {
             if (rotating) return;
             int tx = (int) texel.getX(), ty = (int) texel.getY();
             // pressing on a pixel that is already selected grabs the selection to pull it
-            if (tool == Tool.SELECT && selected[ty * TEX_W + tx] && startPull(tx, ty, e.getScreenX(), e.getScreenY())) return;
+            if (tool == Tool.SELECT && selected[ty * texW + tx] && startPull(tx, ty, e.getScreenX(), e.getScreenY())) return;
             if (tool == Tool.SELECT && e.isAltDown()) {
                 brushed(tx, ty, (bx, by) -> setSelected(bx, by, false));
                 selectionChanged();
@@ -550,10 +585,10 @@ public final class SkinEditor implements AutoCloseable {
         double rootHeight = panelHeight;
         // tools 236 + a 3D view of at least 280 + gaps and the panel's own padding
         double free = rootWidth - 250 - 280 - 14 * 2 - 30;
-        int byWidth = (int) Math.floor(free / TEX_W);
+        int byWidth = (int) Math.floor(free / viewW());
         // panel padding + the hint under the texture
-        int byHeight = rootHeight > 0 ? (int) Math.floor((rootHeight - 90) / texH) : byWidth;
-        int next = Math.max(4, Math.min(cape ? 12 : 10, Math.min(byWidth, byHeight)));
+        int byHeight = rootHeight > 0 ? (int) Math.floor((rootHeight - 90) / viewH()) : byWidth;
+        int next = Math.max(scale > 1 ? 1 : 4, Math.min(cape ? 12 : 10, Math.min(byWidth, byHeight)));
         if (next == cell) return;
         cell = next;
         sizeCanvas();
@@ -561,8 +596,8 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     private void sizeCanvas() {
-        canvas.setWidth(TEX_W * cell);
-        canvas.setHeight(texH * cell);
+        canvas.setWidth(viewW() * cell);
+        canvas.setHeight(viewH() * cell);
         canvasFrame.setMinSize(canvas.getWidth(), canvas.getHeight());
         canvasFrame.setMaxSize(canvas.getWidth(), canvas.getHeight());
         flatHint.setMaxWidth(canvas.getWidth());
@@ -636,7 +671,7 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     private void applyTool(int x, int y, boolean continuing) {
-        if (x < 0 || y < 0 || x >= TEX_W || y >= texH) return;
+        if (x < 0 || y < 0 || x >= texW || y >= texH) return;
         switch (tool) {
             case PENCIL -> brushed(x, y, (bx, by) -> paint(bx, by, toArgb(color)));
             case ERASER -> brushed(x, y, (bx, by) -> paint(bx, by, 0));
@@ -657,8 +692,8 @@ public final class SkinEditor implements AutoCloseable {
             case FILL -> {
                 if (!continuing) {
                     fill(x, y, toArgb(color));
-                    int m = mirror ? mirrorOf[y * TEX_W + x] : -1;
-                    if (m >= 0) fill(m % TEX_W, m / TEX_W, toArgb(color));
+                    int m = mirror ? mirrorOf[y * texW + x] : -1;
+                    if (m >= 0) fill(m % texW, m / texW, toArgb(color));
                 }
             }
             case PICKER -> {
@@ -678,7 +713,7 @@ public final class SkinEditor implements AutoCloseable {
      * transparent texel stays transparent. Each pass of the brush softens a little more.
      */
     private int blurred(int[] src, int x, int y) {
-        int centre = src[y * TEX_W + x];
+        int centre = src[y * texW + x];
         if ((centre >>> 24) == 0) return centre;
         Face face = faceAt(x, y);
         double a = 0, r = 0, g = 0, b = 0, weight = 0;
@@ -686,7 +721,7 @@ public final class SkinEditor implements AutoCloseable {
             for (int dx = -1; dx <= 1; dx++) {
                 int nx = x + dx, ny = y + dy;
                 if (face == null || !face.contains(nx, ny)) continue;
-                int c = src[ny * TEX_W + nx];
+                int c = src[ny * texW + nx];
                 if ((c >>> 24) == 0) continue;
                 double w = dx == 0 && dy == 0 ? 2 : 1;
                 a += (c >>> 24) * w;
@@ -707,14 +742,14 @@ public final class SkinEditor implements AutoCloseable {
      */
     private void replaceColour(int x, int y, int argb) {
         if (faceAt(x, y) == null) return;
-        int from = pixels[y * TEX_W + x];
+        int from = pixels[y * texW + x];
         if (from == argb) return;
         int n = 0;
         for (Face f : faces) {
             for (int ty = f.y(); ty < f.y() + f.h() && ty < texH; ty++) {
-                for (int tx = f.x(); tx < f.x() + f.w() && tx < TEX_W; tx++) {
-                    if (pixels[ty * TEX_W + tx] != from) continue;
-                    pixels[ty * TEX_W + tx] = argb;
+                for (int tx = f.x(); tx < f.x() + f.w() && tx < texW; tx++) {
+                    if (pixels[ty * texW + tx] != from) continue;
+                    pixels[ty * texW + tx] = argb;
                     updateTexel(tx, ty);
                     n++;
                 }
@@ -726,7 +761,7 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     /** Texels the shading brushes already changed in this stroke: one stroke changes each once. */
-    private final boolean[] strokeTouched = new boolean[TEX_W * 64];
+    private boolean[] strokeTouched;
     private final java.util.Random random = new java.util.Random();
 
     /**
@@ -735,7 +770,7 @@ public final class SkinEditor implements AutoCloseable {
      * mouse lingers on it; another stroke over it goes further. Transparent texels stay as they are.
      */
     private void shadeOnce(int x, int y, double amount) {
-        int i = y * TEX_W + x;
+        int i = y * texW + x;
         if (strokeTouched[i]) return;
         strokeTouched[i] = true;
         int argb = pixels[i];
@@ -760,8 +795,8 @@ public final class SkinEditor implements AutoCloseable {
                 int bx = x + dx, by = y + dy;
                 if (!face.contains(bx, by)) continue;
                 action.accept(bx, by);
-                int m = mirror ? mirrorOf[by * TEX_W + bx] : -1;
-                if (m >= 0 && m != by * TEX_W + bx) action.accept(m % TEX_W, m / TEX_W);
+                int m = mirror ? mirrorOf[by * texW + bx] : -1;
+                if (m >= 0 && m != by * texW + bx) action.accept(m % texW, m / texW);
             }
         }
     }
@@ -770,7 +805,7 @@ public final class SkinEditor implements AutoCloseable {
 
     private boolean mirror;
     /** For each texel, the texel at the mirrored spot (x -> -x) of the same layer, or -1. */
-    private final int[] mirrorOf = new int[TEX_W * 64];
+    private int[] mirrorOf;
 
     /**
      * Pairs every texel with its mirror image: each texel's place on the model is flipped left to
@@ -778,24 +813,29 @@ public final class SkinEditor implements AutoCloseable {
      * arm, the left half of the face with the right half, whatever the texture layout.
      */
     private void buildMirror() {
+        // У плаща зеркала нет, а обход всех клеток при большом разрешении заметно долгий.
+        if (cape) {
+            java.util.Arrays.fill(mirrorOf, -1);
+            return;
+        }
         java.util.Arrays.fill(mirrorOf, -1);
         java.util.Map<String, Integer> byPlace = new java.util.HashMap<>();
         List<Box> list = boxes();
-        double[][] place = new double[TEX_W * texH][];
+        double[][] place = new double[texW * texH][];
         for (int y = 0; y < texH; y++) {
-            for (int x = 0; x < TEX_W; x++) {
+            for (int x = 0; x < texW; x++) {
                 int i = boxIndexAt(x, y);
                 if (i < 0 || i >= list.size()) continue;
                 double[] at = texelPoint(list.get(i), x, y);
                 if (at == null) continue;
-                place[y * TEX_W + x] = at;
-                byPlace.put(placeKey(at[0], at[1], at[2], at[3], at[4], at[5], list.get(i).outer()), y * TEX_W + x);
+                place[y * texW + x] = at;
+                byPlace.put(placeKey(at[0], at[1], at[2], at[3], at[4], at[5], list.get(i).outer()), y * texW + x);
             }
         }
         for (int t = 0; t < place.length; t++) {
             double[] at = place[t];
             if (at == null) continue;
-            Integer m = byPlace.get(placeKey(-at[0], at[1], at[2], -at[3], at[4], at[5], list.get(boxIndexAt(t % TEX_W, t / TEX_W)).outer()));
+            Integer m = byPlace.get(placeKey(-at[0], at[1], at[2], -at[3], at[4], at[5], list.get(boxIndexAt(t % texW, t / texW)).outer()));
             if (m != null) mirrorOf[t] = m;
         }
     }
@@ -837,7 +877,7 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     private int clampX(int x) {
-        return Math.max(0, Math.min(TEX_W - 1, x));
+        return Math.max(0, Math.min(texW - 1, x));
     }
 
     private int clampY(int y) {
@@ -847,8 +887,8 @@ public final class SkinEditor implements AutoCloseable {
     // ------------------------------------------------------------------ selection
 
     private void setSelected(int x, int y, boolean on) {
-        if (selected[y * TEX_W + x] == on) return;
-        selected[y * TEX_W + x] = on;
+        if (selected[y * texW + x] == on) return;
+        selected[y * texW + x] = on;
         updateTexel(x, y);
     }
 
@@ -899,8 +939,8 @@ public final class SkinEditor implements AutoCloseable {
         List<Box> list = boxes();
         int moved = 0;
         for (int y = 0; y < texH; y++) {
-            for (int x = 0; x < TEX_W; x++) {
-                if (!selected[y * TEX_W + x]) continue;
+            for (int x = 0; x < texW; x++) {
+                if (!selected[y * texW + x]) continue;
                 int i = boxIndexAt(x, y);
                 if (i < 0) continue;
                 // selected on the base: copy outwards; selected on the outer layer: copy the base
@@ -909,8 +949,8 @@ public final class SkinEditor implements AutoCloseable {
                 int du = outer.u() - base.u(), dv = outer.v() - base.v();
                 int sx = i < 6 ? x : x - du, sy = i < 6 ? y : y - dv;
                 int tx = sx + du, ty = sy + dv;
-                if (sx < 0 || sy < 0 || tx < 0 || ty < 0 || tx >= TEX_W || ty >= texH) continue;
-                pixels[ty * TEX_W + tx] = pixels[sy * TEX_W + sx];
+                if (sx < 0 || sy < 0 || tx < 0 || ty < 0 || tx >= texW || ty >= texH) continue;
+                pixels[ty * texW + tx] = pixels[sy * texW + sx];
                 moved++;
             }
         }
@@ -965,13 +1005,13 @@ public final class SkinEditor implements AutoCloseable {
         List<Box> list = boxes();
         java.util.Map<Integer, PhongMaterial> mats = new java.util.HashMap<>();
         for (int ty = 0; ty < texH; ty++) {
-            for (int tx = 0; tx < TEX_W; tx++) {
-                if (!selected[ty * TEX_W + tx]) continue;
+            for (int tx = 0; tx < texW; tx++) {
+                if (!selected[ty * texW + tx]) continue;
                 int bi = boxIndexAt(tx, ty);
                 if (bi < 0) continue;
                 double[] point = texelPoint(list.get(bi), tx, ty);
                 if (point == null) continue;
-                int argb = pixels[ty * TEX_W + tx];
+                int argb = pixels[ty * texW + tx];
                 PhongMaterial m = mats.computeIfAbsent(argb, c -> {
                     PhongMaterial pm = new PhongMaterial(fromArgb(c).deriveColor(0, 1, 1, 1).interpolate(Color.web("#8D6BFA"), 0.15));
                     pm.setSpecularColor(Color.TRANSPARENT);
@@ -1061,16 +1101,16 @@ public final class SkinEditor implements AutoCloseable {
         pushUndo();
         List<Box> list = boxes();
         for (int y = 0; y < texH; y++) {
-            for (int x = 0; x < TEX_W; x++) {
-                if (!selected[y * TEX_W + x]) continue;
+            for (int x = 0; x < texW; x++) {
+                if (!selected[y * texW + x]) continue;
                 int i = boxIndexAt(x, y);
                 if (i < 0) continue;
                 if (i >= 6) {
-                    pixels[y * TEX_W + x] = 0;
+                    pixels[y * texW + x] = 0;
                 } else {
                     Box base = list.get(i), outer = list.get(i + 6);
                     int tx = x + outer.u() - base.u(), ty = y + outer.v() - base.v();
-                    if (tx >= 0 && ty >= 0 && tx < TEX_W && ty < texH) pixels[ty * TEX_W + tx] = 0;
+                    if (tx >= 0 && ty >= 0 && tx < texW && ty < texH) pixels[ty * texW + tx] = 0;
                 }
             }
         }
@@ -1110,8 +1150,8 @@ public final class SkinEditor implements AutoCloseable {
 
     private void paint(int x, int y, int argb) {
         if (faceAt(x, y) == null) return;
-        if (pixels[y * TEX_W + x] == argb) return;
-        pixels[y * TEX_W + x] = argb;
+        if (pixels[y * texW + x] == argb) return;
+        pixels[y * texW + x] = argb;
         dirty = true;
         updateTexel(x, y);
         drawCell(canvas.getGraphicsContext2D(), x, y);
@@ -1121,7 +1161,7 @@ public final class SkinEditor implements AutoCloseable {
     private void fill(int x, int y, int argb) {
         Face face = faceAt(x, y);
         if (face == null) return;
-        int target = pixels[y * TEX_W + x];
+        int target = pixels[y * texW + x];
         if (target == argb) return;
         Deque<int[]> stack = new ArrayDeque<>();
         stack.push(new int[]{x, y});
@@ -1129,8 +1169,8 @@ public final class SkinEditor implements AutoCloseable {
             int[] p = stack.pop();
             int px = p[0];
             int py = p[1];
-            if (!face.contains(px, py) || pixels[py * TEX_W + px] != target) continue;
-            pixels[py * TEX_W + px] = argb;
+            if (!face.contains(px, py) || pixels[py * texW + px] != target) continue;
+            pixels[py * texW + px] = argb;
             updateTexel(px, py);
             stack.push(new int[]{px + 1, py});
             stack.push(new int[]{px - 1, py});
@@ -1142,8 +1182,8 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     private void pickColor(int x, int y) {
-        if (x < 0 || y < 0 || x >= TEX_W || y >= texH) return;
-        int argb = pixels[y * TEX_W + x];
+        if (x < 0 || y < 0 || x >= texW || y >= texH) return;
+        int argb = pixels[y * texW + x];
         if ((argb >>> 24) == 0) return;
         setColor(fromArgb(argb), true);
     }
@@ -1177,9 +1217,9 @@ public final class SkinEditor implements AutoCloseable {
         if (pick == null || !(pick.getIntersectedNode() instanceof MeshView)) return null;
         Point2D uv = pick.getIntersectedTexCoord();
         if (uv == null) return null;
-        int x = (int) Math.floor(uv.getX() * TEX_W);
+        int x = (int) Math.floor(uv.getX() * texW);
         int y = (int) Math.floor(uv.getY() * texH);
-        if (x < 0 || y < 0 || x >= TEX_W || y >= texH) return null;
+        if (x < 0 || y < 0 || x >= texW || y >= texH) return null;
         return new Point2D(x, y);
     }
 
@@ -1188,7 +1228,7 @@ public final class SkinEditor implements AutoCloseable {
     private void refreshAll() {
         updateOuterVisibility();
         for (int y = 0; y < texH; y++) {
-            for (int x = 0; x < TEX_W; x++) {
+            for (int x = 0; x < texW; x++) {
                 updateTexel(x, y);
             }
         }
@@ -1204,15 +1244,15 @@ public final class SkinEditor implements AutoCloseable {
         int argb = shown(x, y);
         // While the outer layer is being edited it is a grid rather than a shell: empty texels
         // are open cells, painted ones are filled cells, and the model shows through.
-        boolean grid = outerLayer && !cape && outerTexel[y * TEX_W + x];
+        boolean grid = outerLayer && !cape && outerTexel[y * texW + x];
         boolean empty = (argb >>> 24) == 0;
-        for (int dy = 0; dy < UPSCALE; dy++) {
-            for (int dx = 0; dx < UPSCALE; dx++) {
+        for (int dy = 0; dy < upscale; dy++) {
+            for (int dx = 0; dx < upscale; dx++) {
                 int c = argb;
-                if (grid && (dx == 0 || dy == 0 || dx == UPSCALE - 1 || dy == UPSCALE - 1)) {
+                if (grid && (dx == 0 || dy == 0 || dx == upscale - 1 || dy == upscale - 1)) {
                     c = empty ? GRID_LINE : over(argb, GRID_LINE_ON_PAINT);
                 }
-                writer.setArgb(x * UPSCALE + dx, y * UPSCALE + dy, c);
+                writer.setArgb(x * upscale + dx, y * upscale + dy, c);
             }
         }
     }
@@ -1228,8 +1268,8 @@ public final class SkinEditor implements AutoCloseable {
 
     /** What the model shows for a texel: its colour, tinted violet while selected. */
     private int shown(int x, int y) {
-        int argb = pixels[y * TEX_W + x];
-        if (!selected[y * TEX_W + x]) return argb;
+        int argb = pixels[y * texW + x];
+        if (!selected[y * texW + x]) return argb;
         int a = Math.max(0x99, argb >>> 24);
         int r = (((argb >> 16) & 255) + 0x8D * 2) / 3, g = (((argb >> 8) & 255) + 0x6B * 2) / 3, b = ((argb & 255) + 0xFA * 2) / 3;
         return (a << 24) | (r << 16) | (g << 8) | b;
@@ -1238,9 +1278,23 @@ public final class SkinEditor implements AutoCloseable {
     private void redrawCanvas() {
         GraphicsContext g = canvas.getGraphicsContext2D();
         g.setImageSmoothing(false);
-        for (int y = 0; y < texH; y++) {
-            for (int x = 0; x < TEX_W; x++) {
-                drawCell(g, x, y);
+        if (scale > 1) {
+            // Большой плащ: сотни тысяч fillRect держали окно десятки секунд, поэтому одной картинкой.
+            int w = viewW(), h = viewH();
+            WritableImage image = new WritableImage(w, h);
+            javafx.scene.image.PixelWriter writer = image.getPixelWriter();
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int back = ((x + y) & 1) == 0 ? 0xFF3A3F47 : 0xFF2F333A;
+                    writer.setArgb(x, y, over(back, pixels[y * texW + x]));
+                }
+            }
+            g.drawImage(image, 0, 0, w * cell, h * cell);
+        } else {
+            for (int y = 0; y < texH; y++) {
+                for (int x = 0; x < texW; x++) {
+                    drawCell(g, x, y);
+                }
             }
         }
         // face outlines, the edited layer's in the accent colour
@@ -1261,6 +1315,15 @@ public final class SkinEditor implements AutoCloseable {
         }
     }
 
+    /** Что видно на холсте. У большого плаща только сам плащ (22×17 клеток), иначе в панель не влезает. */
+    private int viewW() {
+        return scale > 1 ? 22 * scale : texW;
+    }
+
+    private int viewH() {
+        return scale > 1 ? 17 * scale : texH;
+    }
+
     private void drawCell(GraphicsContext g, int x, int y) {
         double px = x * cell;
         double py = y * cell;
@@ -1271,13 +1334,13 @@ public final class SkinEditor implements AutoCloseable {
         g.setFill(used ? (light ? Color.web("#3a3f47") : Color.web("#2f333a"))
                        : (light ? Color.web("#1d2025") : Color.web("#191b1f")));
         g.fillRect(px, py, cell, cell);
-        int argb = pixels[y * TEX_W + x];
+        int argb = pixels[y * texW + x];
         if ((argb >>> 24) != 0) {
             Color c = fromArgb(argb);
             g.setFill(used ? c : c.deriveColor(0, 1, 0.45, 1));
             g.fillRect(px, py, cell, cell);
         }
-        if (selected[y * TEX_W + x]) {
+        if (selected[y * texW + x]) {
             g.setFill(Color.web("#8D6BFA", 0.45));
             g.fillRect(px, py, cell, cell);
         }
@@ -1325,24 +1388,25 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     /** Texels that belong to a face of the outer layer. */
-    private final boolean[] outerTexel = new boolean[TEX_W * 64];
+    private boolean[] outerTexel;
 
     private void rebuildFaces() {
         faces.clear();
         java.util.Arrays.fill(outerTexel, false);
         for (Box b : boxes()) {
             int u = b.u(), v = b.v(), w = b.w(), h = b.h(), d = b.d();
-            faces.add(new Face(u + d, v, w, d, b.outer()));             // top
-            faces.add(new Face(u + d + w, v, w, d, b.outer()));         // bottom
-            faces.add(new Face(u, v + d, d, h, b.outer()));             // right side
-            faces.add(new Face(u + d, v + d, w, h, b.outer()));         // front
-            faces.add(new Face(u + d + w, v + d, d, h, b.outer()));     // left side
-            faces.add(new Face(u + d + w + d, v + d, w, h, b.outer())); // back
+            int k = scale;
+            faces.add(new Face((u + d) * k, v * k, w * k, d * k, b.outer()));             // top
+            faces.add(new Face((u + d + w) * k, v * k, w * k, d * k, b.outer()));         // bottom
+            faces.add(new Face(u * k, (v + d) * k, d * k, h * k, b.outer()));             // right side
+            faces.add(new Face((u + d) * k, (v + d) * k, w * k, h * k, b.outer()));       // front
+            faces.add(new Face((u + d + w) * k, (v + d) * k, d * k, h * k, b.outer()));   // left side
+            faces.add(new Face((u + d + w + d) * k, (v + d) * k, w * k, h * k, b.outer())); // back
         }
         for (Face f : faces) {
             if (!f.outer()) continue;
             for (int y = f.y(); y < f.y() + f.h() && y < texH; y++)
-                for (int x = f.x(); x < f.x() + f.w() && x < TEX_W; x++) outerTexel[y * TEX_W + x] = true;
+                for (int x = f.x(); x < f.x() + f.w() && x < texW; x++) outerTexel[y * texW + x] = true;
         }
         buildMirror();
     }
@@ -1391,9 +1455,9 @@ public final class SkinEditor implements AutoCloseable {
         int u = b.u(), v = b.v(), w = b.w(), h = b.h(), d = b.d();
         for (int y = v; y < v + d + h; y++) {
             for (int x = u; x < u + 2 * (w + d); x++) {
-                if (x >= TEX_W || y >= texH) continue;
+                if (x >= texW || y >= texH) continue;
                 if (y < v + d && (x < u + d || x >= u + d + 2 * w)) continue;   // corners of the top row are unused
-                if ((pixels[y * TEX_W + x] >>> 24) != 0) return true;
+                if ((pixels[y * texW + x] >>> 24) != 0) return true;
             }
         }
         return false;
@@ -1437,7 +1501,7 @@ public final class SkinEditor implements AutoCloseable {
             for (int k = 0; k < 4; k++) {
                 float[] c = corner[idx[k]];
                 mesh.getPoints().addAll(c[0], c[1], c[2]);
-                mesh.getTexCoords().addAll(uvs[k][0] / TEX_W, uvs[k][1] / texH);
+                mesh.getTexCoords().addAll(uvs[k][0] / BASE_W, uvs[k][1] * scale / texH);
             }
             int p0 = pointIndex, t0 = texIndex;
             mesh.getFaces().addAll(p0, t0, p0 + 1, t0 + 1, p0 + 2, t0 + 2);
@@ -1522,24 +1586,29 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     /**
-     * Takes a texture in any of the sizes the game accepts: 64x64 and 64x32 skins, 64x32 and
-     * 22x17 capes. Anything else (HD packs, random pictures) is refused with a message, since
-     * squeezing it into 64 pixels would just produce mush.
+     * Takes a texture in any of the sizes the game accepts: 64x64 and 64x32 skins, 22x17 capes and
+     * 64x32 capes up to 1024x512. Anything else (random pictures) is refused with a message, since
+     * squeezing it onto the model would just produce mush.
      */
     private boolean load(Image image, boolean announce) {
         PixelReader reader = image.getPixelReader();
         int w = (int) image.getWidth();
         int h = (int) image.getHeight();
         if (reader == null) return false;
-        int[] next = new int[TEX_W * texH];
+        int[] next = new int[texW * texH];
         if (cape) {
-            if (!((w == 64 && h == 32) || (w == 22 && h == 17))) {
+            int wanted = capeScaleOf(w, h);
+            if (wanted == 0) {
                 if (announce) host.toast(host.tr("cape_bad_size"), "error");
                 return false;
             }
+            if (wanted != scale) {
+                setCapeScale(wanted, false);
+                next = new int[texW * texH];
+            }
             for (int y = 0; y < Math.min(h, texH); y++)
-                for (int x = 0; x < Math.min(w, TEX_W); x++)
-                    next[y * TEX_W + x] = reader.getArgb(x, y);
+                for (int x = 0; x < Math.min(w, texW); x++)
+                    next[y * texW + x] = reader.getArgb(x, y);
         } else {
             if (!(w == 64 && (h == 64 || h == 32))) {
                 if (announce) host.toast(host.tr("skin_bad_size"), "error");
@@ -1547,9 +1616,9 @@ public final class SkinEditor implements AutoCloseable {
             }
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
-                    next[y * TEX_W + x] = reader.getArgb(x, y);
+                    next[y * texW + x] = reader.getArgb(x, y);
             if (h == 32) convertLegacy(next);
-            boolean detectedSlim = (next[20 * TEX_W + 54] >>> 24) == 0 && (next[20 * TEX_W + 50] >>> 24) != 0;
+            boolean detectedSlim = (next[20 * texW + 54] >>> 24) == 0 && (next[20 * texW + 50] >>> 24) != 0;
             if (detectedSlim != slim) {
                 slim = detectedSlim;
                 if (slimToggle != null) slimToggle.setSelected(slim);
@@ -1585,12 +1654,12 @@ public final class SkinEditor implements AutoCloseable {
     private static void copyMirrored(int[] p, int sx, int sy, int w, int h, int dx, int dy) {
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
-                p[(dy + y) * TEX_W + dx + x] = p[(sy + y) * TEX_W + sx + (w - 1 - x)];
+                p[(dy + y) * BASE_W + dx + x] = p[(sy + y) * BASE_W + sx + (w - 1 - x)];
     }
 
     private byte[] toPng() throws IOException {
-        BufferedImage out = new BufferedImage(TEX_W, texH, BufferedImage.TYPE_INT_ARGB);
-        out.setRGB(0, 0, TEX_W, texH, pixels, 0, TEX_W);
+        BufferedImage out = new BufferedImage(texW, texH, BufferedImage.TYPE_INT_ARGB);
+        out.setRGB(0, 0, texW, texH, pixels, 0, texW);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ImageIO.write(out, "png", bytes);
         return bytes.toByteArray();
@@ -1631,6 +1700,137 @@ public final class SkinEditor implements AutoCloseable {
         }
     }
 
+    /**
+     * Своё фото на плаще (05.11.2026, просьба владельца). Ложится на внешнюю сторону плаща (10×16 клеток)
+     * с обрезкой по центру, чтобы не сплющилось. Плащ при этом становится самым большим, ×16: иначе от
+     * фото остаётся мозаика. Остальные стороны не меняются, отмена возвращает как было.
+     */
+    private void choosePhoto() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(host.tr("cape_photo"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(host.tr("cape_photo_files"),
+                "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp"));
+        File file = chooser.showOpenDialog(root.getScene() == null ? null : root.getScene().getWindow());
+        if (file != null) putPhoto(file);
+    }
+
+    private void putPhoto(File file) {
+        BufferedImage src;
+        try {
+            src = javax.imageio.ImageIO.read(file);
+        } catch (IOException | RuntimeException e) {
+            src = null;
+        }
+        if (src == null) {
+            host.toast(host.tr("cape_photo_bad"), "error");
+            return;
+        }
+        setCapeScale(CAPE_SCALES[CAPE_SCALES.length - 1], true);
+        int k = scale, w = 10 * k, h = 16 * k;
+        int[] fitted = coverPhoto(src, w, h);
+        pushUndo();
+        for (int y = 0; y < h; y++) System.arraycopy(fitted, y * w, pixels, (k + y) * texW + k, w);
+        dirty = true;
+        refreshAll();
+        host.photoPlaced();
+    }
+
+    /** Фото w×h: лишнее обрезается по центру, уменьшение со сглаживанием. Прозрачное становится непрозрачным чёрным. */
+    static int[] coverPhoto(BufferedImage src, int w, int h) {
+        double k = Math.max((double) w / src.getWidth(), (double) h / src.getHeight());
+        int cropW = Math.max(1, (int) Math.round(w / k)), cropH = Math.max(1, (int) Math.round(h / k));
+        BufferedImage crop = src.getSubimage((src.getWidth() - cropW) / 2, (src.getHeight() - cropH) / 2, cropW, cropH);
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = out.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.drawImage(crop.getScaledInstance(w, h, java.awt.Image.SCALE_AREA_AVERAGING), 0, 0, null);
+        g.dispose();
+        int[] px = out.getRGB(0, 0, w, h, null, 0, w);
+        for (int i = 0; i < px.length; i++) px[i] |= 0xFF000000;
+        return px;
+    }
+
+    /** Во сколько раз плащ такого размера крупнее обычного; 0 — такого плаща не бывает. */
+    private static int capeScaleOf(int w, int h) {
+        if (w == 22 && h == 17) return 1;
+        for (int k : CAPE_SCALES) {
+            if (w == BASE_W * k && h == 32 * k) return k;
+        }
+        return 0;
+    }
+
+    /**
+     * Разрешение плаща (05.11.2026, просьба владельца: «на плащах больше пикселей»). Модель та же: игра
+     * растягивает любую текстуру 2:1 на плащ. Рисунок сохраняется, каждый пиксель становится квадратом;
+     * при уменьшении берётся средний цвет. История отмены сбрасывается: в ней другой размер.
+     */
+    private void setCapeScale(int next, boolean keepPicture) {
+        if (next == scale) return;
+        int[] old = pixels;
+        int oldW = texW, oldH = texH;
+        scale = next;
+        texW = BASE_W * next;
+        texH = 32 * next;
+        upscale = Math.max(1, MODEL_DETAIL / next);
+        allocate();
+        pixels = keepPicture ? resampled(old, oldW, oldH, texW, texH) : new int[texW * texH];
+        undo.clear();
+        redo.clear();
+        if (capeScaleRow != null) {
+            for (Node n : capeScaleRow.getChildren()) {
+                if (n instanceof ToggleButton b) b.setSelected(Integer.valueOf(next).equals(b.getUserData()));
+            }
+        }
+        modelTexture = new WritableImage(texW * upscale, texH * upscale);
+        material.setDiffuseMap(modelTexture);
+        rebuildFaces();
+        rebuildModel();
+        if (flatBox != null) {
+            sizeCanvas();
+            fitCanvas(flatBox.getWidth(), flatBox.getHeight());
+        }
+        refreshAll();
+    }
+
+    /** Массивы размером с текстуру. */
+    private void allocate() {
+        int n = texW * texH;
+        selected = new boolean[n];
+        strokeTouched = new boolean[n];
+        mirrorOf = new int[n];
+        outerTexel = new boolean[n];
+    }
+
+    /** Увеличение — квадратами, уменьшение — средним цветом с учётом прозрачности. */
+    static int[] resampled(int[] src, int sw, int sh, int dw, int dh) {
+        int[] out = new int[dw * dh];
+        if (dw >= sw) {
+            for (int y = 0; y < dh; y++) {
+                for (int x = 0; x < dw; x++) out[y * dw + x] = src[(y * sh / dh) * sw + x * sw / dw];
+            }
+            return out;
+        }
+        int k = sw / dw;
+        for (int y = 0; y < dh; y++) {
+            for (int x = 0; x < dw; x++) {
+                long a = 0, r = 0, g = 0, b = 0;
+                for (int j = 0; j < k; j++) {
+                    for (int i = 0; i < k; i++) {
+                        int c = src[(y * k + j) * sw + x * k + i];
+                        int ca = c >>> 24;
+                        a += ca;
+                        r += ((c >> 16) & 255) * ca;
+                        g += ((c >> 8) & 255) * ca;
+                        b += (c & 255) * ca;
+                    }
+                }
+                if (a == 0) continue;
+                out[y * dw + x] = (int) (a / (k * k)) << 24 | (int) (r / a) << 16 | (int) (g / a) << 8 | (int) (b / a);
+            }
+        }
+        return out;
+    }
+
     /** Pixels for tests and for the launcher's own checks. */
     public int[] pixels() {
         return pixels.clone();
@@ -1640,7 +1840,7 @@ public final class SkinEditor implements AutoCloseable {
 
     /** A plain mannequin in the launcher's colours: something to paint over, not a character. */
     private int[] defaultSkin() {
-        int[] p = new int[TEX_W * 64];
+        int[] p = new int[texW * 64];
         int skin = 0xFFD9A47E, shirt = 0xFF2FB5A6, trousers = 0xFF3B4A7A, hair = 0xFF4A3426, shoe = 0xFF2A2A2A;
         fillBox(p, 0, 0, 8, 8, 8, skin);         // head
         fillRect(p, 8, 0, 8, 8, hair);           // top of the head
@@ -1662,10 +1862,10 @@ public final class SkinEditor implements AutoCloseable {
     }
 
     private int[] defaultCape() {
-        int[] p = new int[TEX_W * 32];
+        int[] p = new int[BASE_W * 32];
         fillBox(p, 0, 0, 10, 16, 1, 0xFF1E6F67);
         fillRect(p, 1, 1, 10, 16, 0xFF2FB5A6);   // the outer side
-        return p;
+        return resampled(p, BASE_W, 32, texW, texH);
     }
 
     private static void fillBox(int[] p, int u, int v, int w, int h, int d, int argb) {
@@ -1677,7 +1877,7 @@ public final class SkinEditor implements AutoCloseable {
     private static void fillRect(int[] p, int x, int y, int w, int h, int argb) {
         for (int j = y; j < y + h; j++)
             for (int i = x; i < x + w; i++)
-                p[j * TEX_W + i] = argb;
+                p[j * BASE_W + i] = argb;
     }
 
     // ------------------------------------------------------------------ colours

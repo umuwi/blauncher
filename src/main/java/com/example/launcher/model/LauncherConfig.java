@@ -6,6 +6,8 @@ import java.util.List;
 public class LauncherConfig {
     private String gameDirectory;
     private String javaPath;
+    /** blender.exe, если его выбрали вручную (инструмент «Блоки из файла»). */
+    private String blenderPath;
     private int minMemoryMb;
     private int maxMemoryMb;
     private boolean enableAds;
@@ -35,6 +37,10 @@ public class LauncherConfig {
     private long rustcraftDriverTipAt;
     /** Спросили ли «Как выглядела игра на Rust?» — спрашиваем один раз на установку (29.10.2026). */
     private boolean rustcraftLookAsked;
+    /** Сколько раз показали опрос «Как вам игра?» после закрытия игры (01.11.2026); больше трёх — не спрашиваем. */
+    private int gameFeedbackShown;
+    /** Опрос отправлен или нажато «Больше не спрашивать». */
+    private boolean gameFeedbackDone;
     /**
      * 1 once the quick-play loader default moved from Vanilla to Fabric (BL Core only loads on
      * Fabric). A config that still says "Vanilla" from before that is moved over once; a choice
@@ -58,6 +64,9 @@ public class LauncherConfig {
     /** Saved offline player profiles / nicknames shown in the Home "Профили" popup. */
     private List<String> savedProfiles = new ArrayList<>();
     private boolean telemetryEnabled;
+    /** Сколько МБ сверх обычного оставлять Windows помимо кучи игры: растёт после каждого вылета
+     *  «не хватило оперативной памяти» (см. GameLaunchService.capToFreeCommit). 0 — вылетов не было. */
+    private int nativeOomReserveMb;
 
     // --- New settings backing the redesigned Settings screen
     // (blauncher-ui-concept-2-1.html). Absent in older saved configs -
@@ -166,6 +175,14 @@ public class LauncherConfig {
         this.jvmArgs = jvmArgs == null ? "" : jvmArgs;
     }
 
+    public String getBlenderPath() {
+        return blenderPath;
+    }
+
+    public void setBlenderPath(String blenderPath) {
+        this.blenderPath = blenderPath;
+    }
+
     public String getJavaPath() {
         return javaPath;
     }
@@ -270,6 +287,22 @@ public class LauncherConfig {
         this.rustcraftLookAsked = rustcraftLookAsked;
     }
 
+    public int getGameFeedbackShown() {
+        return gameFeedbackShown;
+    }
+
+    public void setGameFeedbackShown(int gameFeedbackShown) {
+        this.gameFeedbackShown = gameFeedbackShown;
+    }
+
+    public boolean isGameFeedbackDone() {
+        return gameFeedbackDone;
+    }
+
+    public void setGameFeedbackDone(boolean gameFeedbackDone) {
+        this.gameFeedbackDone = gameFeedbackDone;
+    }
+
     public String getLastSelectedLoader() {
         return lastSelectedLoader;
     }
@@ -335,6 +368,14 @@ public class LauncherConfig {
 
     public void setTelemetryEnabled(boolean telemetryEnabled) {
         this.telemetryEnabled = telemetryEnabled;
+    }
+
+    public int getNativeOomReserveMb() {
+        return nativeOomReserveMb;
+    }
+
+    public void setNativeOomReserveMb(int nativeOomReserveMb) {
+        this.nativeOomReserveMb = Math.max(0, nativeOomReserveMb);
     }
 
     public String getLanguage() {

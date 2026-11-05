@@ -244,6 +244,8 @@ public class ModpackService {
         public String name = "";
         /** {@code versionId} - the pack's OWN version (e.g. "1.4.2"), not a Minecraft version. */
         public String packVersion = "";
+        /** Slug модпака в каталоге Modrinth (MainController ставит его при установке из каталога); "" — из файла. */
+        public String slug = "";
         /** {@code summary} - the one-line description Modrinth shows for the pack. */
         public String summary = "";
         public String mcVersion = "";

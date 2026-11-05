@@ -66,6 +66,12 @@ public class AuthService {
     // Internal state for the polling thread
     private volatile boolean polling = false;
     private volatile String lastStatus = "Not logged in";
+    /**
+     * Почему последний вход не удался — короткой меткой для статистики (без текста ответа):
+     * timeout (код так и не ввели), expired, declined, bad_code, err_<код Microsoft>, odd (ответ
+     * не от Microsoft), xbl, xsts, xerr<код XSTS>, mc, chain_<исключение>, stop. "" — не было сбоя.
+     */
+    private volatile String failTag = "";
     private Consumer<String> logger = msg -> {};
 
     // Persisted across launcher restarts so the user doesn't have to repeat the device code
@@ -303,6 +309,8 @@ public class AuthService {
     public boolean pollForToken() {
         polling = true;
         lastStatus = "Waiting for Microsoft login...";
+        failTag = "";
+        int netErrors = 0;
 
         long deadline = System.currentTimeMillis() + (expiresIn * 1000L);
         int attempt = 0;
@@ -311,6 +319,7 @@ public class AuthService {
                 Thread.sleep(interval * 1000L);
             } catch (InterruptedException e) {
                 polling = false;
+                failTag = "stop";
                 return false;
             }
 
@@ -345,24 +354,28 @@ public class AuthService {
                         }
                         case "expired_token" -> {
                             lastStatus = "Code expired, try again.";
+                            failTag = "expired";
                             log("Device code expired.");
                             polling = false;
                             return false;
                         }
                         case "authorization_declined" -> {
                             lastStatus = "Login was declined.";
+                            failTag = "declined";
                             log("User declined the login.");
                             polling = false;
                             return false;
                         }
                         case "bad_verification_code" -> {
                             lastStatus = "Invalid device code, try again.";
+                            failTag = "bad_code";
                             log("Bad verification code.");
                             polling = false;
                             return false;
                         }
                         default -> {
                             lastStatus = "Login error: " + err;
+                            failTag = "err_" + err.replaceAll("[^A-Za-z0-9_]", "");
                             log("Login error: " + err);
                             polling = false;
                             return false;
@@ -376,6 +389,7 @@ public class AuthService {
                 // (IOException) и навсегда гасил кнопки входа.
                 if (!resp.has("access_token") || !resp.get("access_token").isJsonPrimitive()) {
                     lastStatus = "Microsoft ответил неожидаемым образом — попробуйте ещё раз.";
+                    failTag = "odd";
                     log("Ответ без access_token и без error: " + resp);
                     polling = false;
                     return false;
@@ -405,12 +419,14 @@ public class AuthService {
                     }
                 } catch (IOException e) {
                     lastStatus = e.getMessage();
+                    if (failTag.isEmpty()) failTag = "chain_" + e.getClass().getSimpleName();
                     log(lastStatus);
                     return false;
                 }
 
             } catch (IOException e) {
                 lastStatus = "Network error: " + e.getMessage();
+                netErrors++;
                 log("Network error: " + e.getMessage());
                 // keep polling - this was a transient failure talking to the token endpoint,
                 // the device code itself hasn't been consumed yet.
@@ -418,6 +434,8 @@ public class AuthService {
         }
 
         lastStatus = "Login timed out.";
+        // net — сколько раз за ожидание не достучались до Microsoft: код могли и ввести.
+        failTag = "timeout" + (netErrors > 0 ? " net=" + netErrors : "");
         log("Login timed out.");
         polling = false;
         return false;
@@ -429,7 +447,10 @@ public class AuthService {
     private boolean exchangeFullChain(String msAccessToken) throws IOException {
         // 1) Xbox Live token
         String xblToken = xboxLiveAuth(msAccessToken);
-        if (xblToken == null) return false;
+        if (xblToken == null) {
+            failTag = "xbl";
+            return false;
+        }
 
         lastStatus = "Xbox Live OK. Getting XSTS...";
 
@@ -438,6 +459,7 @@ public class AuthService {
         if (xsts == null) {
             // Often "no Xbox account" — user doesn't have an Xbox profile
             lastStatus = "XSTS failed. Do you have an Xbox profile? Create one at xbox.com";
+            failTag = "xsts";
             return false;
         }
 
@@ -448,6 +470,7 @@ public class AuthService {
         String mcToken = minecraftAuth(xsts.uhs, xsts.token);
         if (mcToken == null) {
             lastStatus = "Minecraft authentication failed.";
+            failTag = "mc";
             return false;
         }
 
@@ -506,6 +529,7 @@ public class AuthService {
                 // создайте на xbox.com» — вредный совет: при заблокированном регионе профиль
                 // у него уже есть, он создавал второй и получал тот же отказ навсегда.
                 long xerr = resp.get("XErr").getAsLong();
+                failTag = "xerr" + xerr;
                 throw new IOException(xstsErrorMessage(xerr));
             }
             log("XSTS auth response: " + (resp != null ? resp : "(empty body)"));
@@ -787,6 +811,7 @@ public class AuthService {
     public String getUsername()     { return minecraftUsername; }
     public String getUuid()         { return minecraftUuid; }
     public String getLastStatus()   { return lastStatus; }
+    public String getFailTag()      { return failTag.isEmpty() ? "unknown" : failTag; }
     public boolean isLoggedIn()     { return minecraftAccessToken != null; }
 
     /**

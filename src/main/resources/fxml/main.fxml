@@ -268,13 +268,19 @@
                                          maxWidth="Infinity" progress="0" visible="false" managed="false"
                                          StackPane.alignment="BOTTOM_CENTER"/>
                         </StackPane>
+                        <!-- Строка состояния — в одной строке с «Готово к запуску», а не под ней:
+                             в окне минимального размера (1050x700) нижняя строка уходила за край
+                             окна, и видно было только «Готово к запуску» (01.11.2026, владелец). -->
                         <HBox spacing="12" alignment="CENTER_LEFT">
-                            <Label fx:id="playHint" text="%play_hint" styleClass="play-hint"/>
-                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="playHint" text="%play_hint" styleClass="play-hint" minWidth="-Infinity"/>
+                            <Label fx:id="homeStatusLabel" styleClass="status-text" wrapText="true"
+                                   minWidth="0" HBox.hgrow="SOMETIMES"/>
+                            <!-- Распорка прижимает «Остановить» к правому краю и при пустом статусе: одна
+                                 растягивающаяся строка этого не делала (снимок 1050x700, 1.14.64). -->
+                            <Region minWidth="0" HBox.hgrow="ALWAYS"/>
                             <Button fx:id="stopButton" text="%stop_btn" styleClass="danger-button"
-                                    onAction="#onStopGame" disable="true"/>
+                                    onAction="#onStopGame" disable="true" minWidth="-Infinity"/>
                         </HBox>
-                        <Label fx:id="homeStatusLabel" styleClass="status-text" wrapText="true"/>
                     </VBox>
                 </VBox>
             </ScrollPane>
@@ -788,11 +794,6 @@
                             <Label text="%jvm_args_sub" styleClass="toggle-sub" wrapText="true"/>
                         </VBox>
                         <TextField fx:id="jvmArgsField" promptText="%jvm_args_prompt"/>
-                        <HBox spacing="8" alignment="CENTER_LEFT">
-                            <Button text="%jvm_preset_g1" styleClass="secondary-button" onAction="#onJvmPresetG1"/>
-                            <Button text="%jvm_preset_zgc" styleClass="secondary-button" onAction="#onJvmPresetZgc"/>
-                            <Button text="%jvm_preset_clear" styleClass="secondary-button" onAction="#onJvmPresetClear"/>
-                        </HBox>
                         <Label fx:id="jvmArgsStatusLabel" styleClass="toggle-sub" wrapText="true" visible="false" managed="false"/>
                         <Separator/>
                         <VBox spacing="2">

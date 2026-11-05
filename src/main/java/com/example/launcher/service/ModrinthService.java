@@ -320,10 +320,19 @@ public class ModrinthService {
      */
     public List<ModInfo> search(String query, String mcVersion, String loader, String projectType, int limit)
             throws IOException, InterruptedException {
+        return searchPage(query, mcVersion, loader, projectType, limit, 0).mods();
+    }
+
+    /** Страница поиска и сколько всего нашлось: экрану «Моды» нужно знать высоту всего списка заранее. */
+    public record SearchPage(List<ModInfo> mods, int hits, int total) {}
+
+    public SearchPage searchPage(String query, String mcVersion, String loader, String projectType, int limit, int offset)
+            throws IOException, InterruptedException {
 
         StringBuilder url = new StringBuilder(API_BASE + "/search?");
         url.append("query=").append(URLEncoder.encode(query == null ? "" : query, StandardCharsets.UTF_8));
         url.append("&limit=").append(Math.min(limit, 100));
+        if (offset > 0) url.append("&offset=").append(offset);
 
         // Тип проекта (mod / shader / resourcepack / datapack / modpack) ОБЯЗАТЕЛЬНО задаётся
         // через facet, а НЕ через query-параметр "project_type": у эндпоинта /search такого
@@ -419,7 +428,8 @@ public class ModrinthService {
             });
         }
 
-        return results;
+        int total = root.has("total_hits") ? root.get("total_hits").getAsInt() : offset + results.size();
+        return new SearchPage(results, results.size(), total);
     }
 
     // ---------------------------------------------------------------

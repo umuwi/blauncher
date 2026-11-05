@@ -1,0 +1,1694 @@
+# Russian UI text from the code (as written there) -> English. Tab-separated; 
+, 	, \ are escapes.
+ с	 s
+ ч	 h
+У 	At 
+ ГБ	 GB
+ КБ	 KB
+ МБ	 MB
+ мс	 ms
+ с)	 s)
+ с.	 s.
+За 	In 
+Чат	Chat
+год	year
+ ГБ)	 GB)
+ до 	 to 
+ из 	 of 
+ лет	 years
+ мин	 min
+ нет	 no
+ от 	 from 
+4 ГБ	4 GB
+6 ГБ	6 GB
+Баны	Bans
+День	Day
+Моды	Mods
+На «	On “
+Упал	Crashed
+Хеш 	Hash 
+Ядро	Core
+ещё 	more 
+идёт	running
+код 	code 
+плащ	cape
+скин	skin
+ МБ).	 MB).
+ МБ)…	 MB)…
+ года	 years
+ для 	 for 
+ мода	 mod
+ нет 	 no 
+% от 	% of 
+, но 	, but 
+,5 ГБ	.5 GB
+» на 	” on 
+Вверх	Up
+Для «	For “
+Модов	Mods
+Позже	Later
+Порт 	Port 
+Снять	Remove
+Тип: 	Type: 
+Успех	Success
+Файл 	File 
+Файлы	Files
+Цвета	Colours
+Чиню…	Fixing…
+порт 	port 
+пусто	empty
+ (код 	 (code 
+ минут	 minutes
+ модов	 mods
+ мс). 	 ms). 
+» упал	” crashed
+Адрес 	Address 
+Акцент	Accent
+Бэкап 	Backup 
+Бэкапы	Backups
+Игрок 	Player 
+Игроки	Players
+На VPS	On VPS
+Обзор…	Browse…
+Онлайн	Online
+Отмена	Cancel
+Ошибка	Error
+Пароль	Password
+Путь: 	Path: 
+Сборка	Build
+Скрыть	Hide
+Убрать	Remove
+текст 	text 
+ байт (	 bytes (
+ байт; 	 bytes; 
+ и ещё 	 and 
+%.0f КБ	%.0f KB
+%.0f МБ	%.0f MB
+%.1f ГБ	%.1f GB
+: файл 	: file 
+Аккаунт	Account
+Было:  	Was:  
+Быстро:	Quick:
+Бэкап: 	Backup: 
+Готово.	Done.
+Запись 	Record 
+Запуск…	Starting…
+Кикнуть	Kick
+Модпаки	Modpacks
+На VPS 	On VPS 
+Не надо	No thanks
+Онлайн 	Online 
+Откат: 	Rollback: 
+Папка «	Folder “
+Понятно	Got it
+Права: 	Permissions: 
+Сейчас 	Now 
+Сервер 	Server 
+Скачать	Download
+Создать	Create
+Удалить	Delete
+Шейдеры	Shaders
+версия 	version 
+папку /	folder /
+ресурсы	assets
+\nСлужба 	\nService 
+ · мир: 	 · world: 
+ · порт 	 · port 
+ · ядер 	 · cores 
+ ГБ (из 	 GB (of 
+ вместо 	 instead of 
+ для MC 	 for MC 
+ его нет	 it is missing
+ секунд.	 seconds.
+ файлов)	 files)
+ файлов.	 files.
+, миры: 	, worlds: 
+: ошибка	: error
+SSH-ключ	SSH key
+» создан	” created
+», порт 	”, port 
+Вайтлист	Whitelist
+Включить	Turn on
+Готово: 	Done: 
+Градиент	Gradient
+Датапаки	Datapacks
+Доверять	Trust
+Забанить	Ban
+Загрузка	Downloading
+Заменить	Replace
+Источник	Source
+Команда 	Command 
+Модпак «	Modpack “
+Недавние	Recent
+Обновить	Update
+Одобрено	Approved
+Одобрить	Approve
+Онлайн: 	Online: 
+Оператор	Operator
+Откат к 	Roll back to 
+Откатить	Roll back
+Ошибка: 	Error: 
+Плагин «	Plugin “
+Покинуть	Leave
+Порт SSH	SSH port
+Починить	Fix
+Проверка	Checking
+Работает	Running
+Расскажу	Tell us
+Сборка «	Build “
+Связь с 	Connection to 
+Сервер «	Server “
+Статус: 	Status: 
+Убрать «	Remove “
+Удаление	Removing
+Удалить 	Delete 
+Хаб для:	Hub for:
+Чат: вкл	Chat: on
+владелец	owner
+выключен	off
+закрытая	private
+мод для 	mod for 
+открытая	public
+отменено	cancelled
+узла нет	no node
+\nСейчас: 	\nNow: 
+ (версия 	 (version 
+ (≈50 МБ)	 (≈50 MB)
+ версий).	 versions).
+ выполнен	 done
+ и папка 	 and the folder 
+ игра на 	 the game on 
+ на VPS: 	 on VPS: 
+ символов	 characters
+), жду...	), waiting...
+, готово 	, ready 
+, но под 	, but under 
+, плагины	, plugins
+, права: 	, permissions: 
+, сейчас 	, now 
+, служба 	, service 
+» создана	” created
+» удалена	” deleted
+» удалён 	” deleted 
+»: зашёл 	”: joined 
+В архиве 	In the archive 
+Вручную: 	Manually: 
+Выключить	Turn off
+Выполняю…	Running…
+Есть идея	Have an idea
+Забанить 	Ban 
+Забанить…	Ban…
+Загружаю 	Uploading 
+Загрузчик	Loader
+Запустить	Start
+Не сейчас	Not now
+Один цвет	One colour
+Операторы	Operators
+Отправить	Send
+Повторить	Retry
+Подождать	Wait
+Подробнее	More
+Подсказки	Hints
+Проверка…	Checking…
+Проверяю…	Checking…
+Профиль «	Profile “
+Разбанить	Unban
+Скачиваю 	Downloading 
+Сохранить	Save
+ЭКСКЛЮЗИВ	EXCLUSIVE
+Язык игры	Game language
+загружаю 	uploading 
+загружаю…	uploading…
+загрузчик	loader
+палитра «	palette “
+свободно 	free 
+скачиваю 	downloading 
+ (копия — 	 (copy — 
+ (ошибок: 	 (errors: 
+ (попытка 	 (attempt 
+ (сборка «	 (build “
+ · права: 	 · permissions: 
+ · служба 	 · service 
+ Есть для 	 Available for 
+ Причина: 	 Reason: 
+ не найден	 not found
+ подключён	 connected
+ файлов в 	 files in 
+, RCON на 	, RCON on 
+, стилей: 	, styles: 
+» в строку	” into the line
+» нет для 	” is missing for 
+» починена	” fixed
+» требует 	” requires 
+Бан игрока	Ban player
+Брандмауэр	Firewall
+В вайтлист	To whitelist
+Вместе с «	Together with “
+Внимание: 	Warning: 
+Вставить «	Paste “
+Запущено: 	Started: 
+ИМЯ ИГРОКА	PLAYER NAME
+Имя игрока	Player name
+К «Играть»	To “Play”
+Название: 	Name: 
+Ник игрока	Player nickname
+Остановить	Stop
+Остановлен	Stopped
+Поделиться	Share
+Пропустить	Skip
+Ресурспаки	Resource packs
+Сборки на 	Builds on 
+Сохранить 	Save 
+Удалено: /	Deleted: /
+Установить	Install
+Установка 	Installing 
+Участники:	Members:
+Форма фона	Background shape
+Я принимаю	I accept
+архивирую 	archiving 
+библиотеки	libraries
+нет данных	no data
+нужен для 	needed for 
+подготовка	preparing
+подключена	connected
+файлы игры	game files
+ · сборка «	 · build “
+ ГБ вместо 	 GB instead of 
+ Например: 	 For example: 
+ нет плаща 	 no cape 
+ повреждена	 is damaged
+ у Mojang: 	 at Mojang: 
+ ч наиграно	 h played
+ — с ними «	 — with them “
+: число от 	: a number from 
+] [СЕРВЕР] 	] [SERVER] 
+» и запущен	” and started
+» обновлена	” updated
+Активирован	Activated
+Высота окна	Window height
+Загрузка...	Loading...
+Изображения	Images
+Код выхода 	Exit code 
+Моды сборки	Build mods
+На сервере 	On the server 
+Направление	Direction
+Нет версии 	No version 
+Никого нет.	Nobody here.
+Новая папка	New folder
+По алфавиту	Alphabetical
+Подключение	Connection
+Подробнее (	More (
+Порт RCON: 	RCON port: 
+Пробовали: 	Tried: 
+Пустой путь	Empty path
+Разделители	Separators
+Серверы на 	Servers on 
+Скопировано	Copied
+Сохранено: 	Saved: 
+Удаление...	Deleting...
+Установлено	Installed
+Установщик 	Installer 
+Фон консоли	Console background
+Часть сети:	Network members:
+Чистое ядро	Plain core
+Ширина окна	Window width
+библиотеки 	libraries 
+запускается	starting
+из лаунчера	from the launcher
+не закрашен	not filled
+нужна Java 	Java needed 
+перенесено 	moved 
+сверху вниз	top to bottom
+сохранённый	saved
+упаковываю 	packing 
+установщик 	installer 
+ (требуется 	 (requires 
+ МБ памяти, 	 MB of memory, 
+ повреждён (	 is damaged (
+, настроек: 	, settings: 
+, не от root	, not as root
+ID комнаты: 	Room ID: 
+Запускается…	Starting…
+Любая версия	Any version
+Не запускать	Don't start
+Не скачался 	Not downloaded: 
+Не читается 	Unreadable: 
+Новая сборка	New build
+Новый сервер	New server
+Папка пуста.	The folder is empty.
+Подключаюсь…	Connecting…
+Подключение…	Connecting…
+Подключиться	Connect
+Пользователь	User
+Проверка VPS	VPS check
+Скачивание (	Downloading (
+Текст ошибки	Error text
+Установка...	Installing...
+Установлен: 	Installed: 
+Ядро сервера	Server core
+Ясная погода	Clear weather
+всё уже есть	everything is already there
+вторая копия	second copy
+ещё один мод	one more mod
+нет ресурса 	no resource 
+по диагонали	diagonal
+полтора года	a year and a half
+почти готово	almost done
+слева вправо	left to right
+ · осталось ~	 · ~left
+ · проверяю: 	 · checking: 
+ недоступен: 	 unavailable: 
+ нет сборки *	 no build *
+ — пробую CLI	 — trying the CLI
+) установлены	) installed
+: не длиннее 	: no longer than 
+: нет файла; 	: no file; 
+HTTP-ошибка; 	HTTP error; 
+» установлена	” installed
+Были проблемы	There were problems
+В архиве нет 	The archive has no 
+Версия сборки	Build version
+Вход по ключу	Key login
+Выберите файл	Choose a file
+Градиент фона	Background gradient
+Игра запущена	Game started
+Как вам игра?	How was the game?
+На VPS ядер: 	VPS cores: 
+Не скачались 	Not downloaded: 
+Не установлен	Not installed
+Новая сборка 	New build 
+Пароль от VPS	VPS password
+Первый запуск	First launch
+Перезапустить	Restart
+Перейдите на 	Go to 
+Подготовка...	Preparing...
+Рамки бейджей	Badge borders
+Сборке нужен 	The build needs 
+Сервер на VPS	Server on VPS
+Скачать на ПК	Download to PC
+Скачивается: 	Downloading: 
+Скачивание · 	Downloading · 
+Создать бэкап	Create backup
+Создаю бэкап…	Creating backup…
+Сохранить мир	Save world
+Что сделать:\n	What to do:\n
+библиотеки 0/	libraries 0/
+запускается… 	starting… 
+неверный ключ	wrong key
+распаковываю 	unpacking 
+уже скачанный	already downloaded
+ (не отмечено)	 (not ticked)
+ · к переносу 	 · to move 
+ МБ памяти, и 	 MB of memory, and 
+ установлен в 	 installed in 
+ — пропустятся	 — will be skipped
+) — пробую CLI	) — trying the CLI
++ Новая сборка	+ New build
+, а сборка на 	, and the build on 
+. Он есть для 	. It exists for 
+sudo с паролем	sudo with password
+» не удалась: 	” failed: 
+Аргументы Java	Java arguments
+Аргументы игры	Game arguments
+В игру уйдёт: 	The game gets: 
+Все загрузчики	All loaders
+Запуск игры...	Starting the game...
+Запускается...	Starting...
+Играть на Java	Play on Java
+Ключ сервера: 	Server key: 
+Обновление до 	Update to 
+Основной текст	Main text
+Откат к бэкапу	Restore backup
+Ошибка входа: 	Login error: 
+Память серверу	Server memory
+Перенести с ПК	Move from PC
+Переустановить	Reinstall
+Порт Minecraft	Minecraft port
+Предупреждение	Warning
+Скачиваю Java 	Downloading Java 
+Служба systemd	systemd service
+Создать сборку	Create build
+Удалить сборку	Delete build
+Установка на «	Installing on “
+Файл секретов 	Secrets file 
+Фон приложения	App background
+в игре/одобрен	in game/approved
+не объект JSON	not a JSON object
+этот компьютер	this computer
+  (не подходит)	  (not suitable)
+ (подробности: 	 (details: 
+ · считаю моды…	 · counting mods…
+ войдите снова.	 sign in again.
+ для Minecraft 	 for Minecraft 
+ и введите код:	 and enter the code:
+ уже установлен	 is already installed
+), качаю заново	), downloading again
+), отложен как 	), postponed as 
+): скопировано 	): copied 
+DPAPI: прервано	DPAPI: interrupted
+Ely.by ответил 	Ely.by answered 
+GitHub ответил 	GitHub answered 
+Mojang ответил 	Mojang answered 
+[FIX] Выключен 	[FIX] Turned off 
+sudo без пароля	sudo without password
+» из лаунчера? 	” from the launcher? 
+» импортирована	” imported
+» нужна сборка 	” needs a build 
+» через минуту?	” in a minute?
+Агент подключен	Agent connected
+Всё понравилось	Loved it
+Вход в комнату 	Joining room 
+Выберите сборку	Choose a build
+Выполнен вход: 	Signed in: 
+Изменить данные	Change details
+Карточки и поля	Cards and fields
+Кладу в архив (	Adding to archive (
+Команды сервера	Server commands
+Любой загрузчик	Any loader
+Настроек внутри	Settings inside
+Не получилось: 	Didn't work: 
+Ошибка удаления	Delete error
+Панели и хотбар	Panels and hotbar
+Перезапустить «	Restart “
+Пока никого нет	Nobody here yet
+Проверяем ключ…	Checking the key…
+Проверяю моды «	Checking mods of “
+Процессор VPS (	VPS CPU (
+Режим выживания	Survival mode
+Рекомендуется: 	Recommended: 
+Рестарт отменён	Restart cancelled
+Рестарт сервера	Server restart
+Ресурсы скачаны	Assets downloaded
+Сборка Modrinth	Modrinth build
+Сейчас онлайн: 	Online now: 
+Скачивание · 0%	Downloading · 0%
+Скачиваю моды: 	Downloading mods: 
+Снять оператора	Remove operator
+Сохранить бэкап	Save backup
+Только этот мод	This mod only
+Удаление бэкапа	Deleting backup
+Удаление сборки	Deleting build
+Цвета градиента	Gradient colours
+Что предложите?	What do you suggest?
+запускаю сервер	starting the server
+запускаю службу	starting the service
+изменить погоду	change the weather
+нет версии под 	no version for 
+нет сборки для 	no build for 
+пусто — общее: 	empty — shared: 
+ · Остановлено: 	 · Stopped: 
+ · меньше минуты	 · under a minute
+ · служба на VPS	 · service on VPS
+ библиотек, jar 	 libraries, jar 
+ выберите Forge.	 choose Forge.
+ с blauncher.ru…	 from blauncher.ru…
+ уже установлена	 is already installed
+) закрыт снаружи	) closed from outside
+, запустился за 	, started in 
+: true или false	: true or false
+EULA и настройки	EULA and settings
+IP-адрес сервера	Server IP address
+ZeroTier включен	ZeroTier on
+» установлен в «	” installed in “
+Бэкап сохранён: 	Backup saved: 
+Версия Minecraft	Minecraft version
+Готово к запуску	Ready to launch
+Ждёт одобрения: 	Awaiting approval: 
+Загрузить файлы…	Upload files…
+Запуск не удался	Launch failed
+Ключ не подошёл.	The key did not fit.
+Купить на FunPay	Buy on FunPay
+Локальный сервер	Local server
+Мод добавлен в «	Mod added to “
+Нет маршрута до 	No route to 
+Останавливается…	Stopping…
+Память сборки: «	Build memory: “
+Перезапускается…	Restarting…
+Перенести на VPS	Move to VPS
+Переустановить «	Reinstall “
+Подбираю версию…	Picking a version…
+Покинуть комнату	Leave room
+Починка сборки «	Fixing build “
+Проверка системы	System check
+Проверка файлов…	Checking files…
+Сборка (.mrpack)	Build (.mrpack)
+Сервер не отдал 	The server did not return 
+Системные пакеты	System packages
+Скачивание Java…	Downloading Java…
+Скачиваю бэкап: 	Downloading backup: 
+Служба не своя: 	Service is not ours: 
+Творческий режим	Creative mode
+Удаление сервера	Deleting server
+Удалить сборку «	Delete build “
+Удалить сервер «	Delete server “
+загружаю на VPS 	uploading to VPS 
+звуки и текстуры	sounds and textures
+ отмечена не для 	 is marked not for 
++ Новая сборка...	+ New build...
+: нужно число от 	: a number from 
+BLauncher комната	BLauncher room
+Forge и NeoForge.	Forge and NeoForge.
+Modrinth ответил 	Modrinth answered 
+ZeroTier выключен	ZeroTier off
+Акцент: наведение	Accent: hover
+Бэкап не создан: 	Backup not created: 
+Бэкапов пока нет.	No backups yet.
+Версия загрузчика	Loader version
+Всё равно закрыть	Close anyway
+Имя сборки пустое	The build name is empty
+Комната создана: 	Room created: 
+Модпак с Modrinth	Modpack from Modrinth
+Нет подключения: 	No connection: 
+Нет связи с VPS: 	No connection to VPS: 
+Операция прервана	Operation interrupted
+Остановка игры...	Stopping the game...
+Откат не удался: 	Rollback failed: 
+Плагины BLauncher	BLauncher plugins
+Проверяем сервер…	Checking the server…
+Спасибо за ответ!	Thanks for the answer!
+Удалить бэкап от 	Delete backup from 
+Файлов в сборке: 	Files in the build: 
+Файлов к загрузке	Files to download
+загрузка отменена	download cancelled
+загрузка прервана	download interrupted
+модов из сборки «	mods from build “
+ожидает одобрения	awaiting approval
+остановить сервер	stop the server
+показать сид мира	show the world seed
+сервер не запущен	server is not running
+удаление адаптера	removing the adapter
+файл больше 25 МБ	file is larger than 25 MB
+ или папку сервера	 or the server folder
+ не для Minecraft 	 not for Minecraft 
+ не завершился за 	 did not finish in 
+, ключ убран с VPS	, key removed from VPS
+, серверов рядом: 	, servers nearby: 
+RCON оборвал пакет	RCON cut the packet
+[FIX] Установлен «	[FIX] Installed “
+capes.dev ответил 	capes.dev answered 
+sha256 не совпал: 	sha256 mismatch: 
+ufw не открыл порт	ufw did not open the port
+» не задаёт токен 	” does not set a token 
+» подключён по SSH	” connected over SSH
+»: проверяем вход…	”: checking login…
+Автовход на сервер	Auto-join server
+Агент не подключен	Agent not connected
+Без загрузки модов	Without loading mods
+Без модов и сборок	No mods or builds
+Библиотеки скачаны	Libraries downloaded
+Введите ник игрока	Enter player nickname
+Включаю автобэкап…	Turning on auto-backup…
+Загружаем каталог…	Loading the catalogue…
+Загружено файлов: 	Files uploaded: 
+Загрузка версий...	Loading versions...
+Запустить ещё одну	Start one more
+Контрольная сумма 	Checksum 
+Не удалось войти: 	Could not sign in: 
+Не удалось удалить	Could not delete
+Некорректный код: 	Invalid code: 
+Обновление плагина	Plugin update
+Останавливается...	Stopping...
+Отменить рестарт (	Cancel restart (
+Ошибка включения: 	Error turning on: 
+Подключение по SSH	SSH connection
+Последняя ошибка: 	Last error: 
+Приватный ключ SSH	SSH private key
+Сборка из лаунчера	Build from the launcher
+Сделать оператором	Make operator
+Только для сервера	Server only
+Установка прервана	Installation interrupted
+Установщик завис: 	Installer hung: 
+в ufw открыт порт 	port opened in ufw 
+закрыть порт RCON 	close the RCON port 
+заспавнить частицы	spawn particles
+как в Настройках: 	as in Settings: 
+не удалось скачать	could not download
+по диагонали вверх	diagonal up
+прорисовки Rust с 	Rust render distance from 
+серверам Minecraft	to Minecraft servers
+серверу загрузчика	to the loader server
+список всех команд	list of all commands
+установка ZeroTier	installing ZeroTier
+ не найден у Mojang	 not found at Mojang
+ не ответил вовремя	 did not answer in time
+ со всем содержимым	 with all its contents
+. Хранит последние 	. Keeps the last 
+EULA принята, порт 	EULA accepted, port 
+[ASSETS] Разложено 	[ASSETS] Laid out 
+[LIBRARIES] Клиент 	[LIBRARIES] Client 
+[fonts] нет в jar: 	[fonts] not in the jar: 
+Автобэкап выключен.	Auto-backup is off.
+В архиве несколько 	The archive has several 
+Выключаю автобэкап…	Turning off auto-backup…
+Готово · зайдём на 	Done · joining 
+Готово к запуску · 	Ready to launch · 
+Добавить в вайтлист	Add to whitelist
+Доступно обновление	Update available
+Загрузка не удалась	Download failed
+Имя новой папки в /	New folder name in /
+Моды не установлены	No mods installed
+Например, anarchy-1	For example, anarchy-1
+Не всё получилось: 	Not everything worked: 
+Не удалось скачать 	Could not download 
+Не удалось создать 	Could not create 
+Перезапуск отменён.	Restart cancelled.
+Плагин активирован.	Plugin activated.
+Распаковка прервана	Unpacking interrupted
+Скачиваю Minecraft 	Downloading Minecraft 
+Странное имя мода: 	Strange mod name: 
+Этих модов нет для 	These mods are not available for 
+заспавнить сущность	spawn an entity
+или версию постарше	or an older version
+на Modrinth версия 	on Modrinth the version 
+останавливаю сервер	stopping the server
+распаковываю на VPS	unpacking on VPS
+с VPS и из лаунчера	from VPS and from the launcher
+серверами Minecraft	Minecraft servers
+сервером загрузчика	the loader server
+  ·  нет версии для 	  ·  no version for 
+ (свой значок скрыт)	 (own icon hidden)
+ · модов на сервер: 	 · server mods: 
+ · средняя нагрузка 	 · average load 
+ · часть пропущена (	 · some skipped (
+ — повторю через 3 с	 — retrying in 3 s
+ — сервер недоступен	 — server unavailable
+, а запуск будет на 	, and it will run on 
+, сервер запускается	, the server is starting
+[FORGE] Установлен: 	[FORGE] Installed: 
+» переустановлен на 	” reinstalled on 
+» удалён из лаунчера	” removed from the launcher
+Больше всего времени	Most time
+В выпуске Rustcraft 	The Rustcraft release 
+В этой JVM нет SHA-1	This JVM has no SHA-1
+Внимание: сервер на 	Warning: the server on 
+Всё равно установить	Install anyway
+Второстепенный текст	Secondary text
+Выберите изображение	Choose an image
+Затемнение под окном	Dimming under the window
+Игра ещё скачивается	The game is still downloading
+Конфигурация комнаты	Room configuration
+Меньше всего времени	Least time
+Например, My Modpack	For example, My Modpack
+Не удалось заменить 	Could not replace 
+Не удалось записать 	Could not write 
+Не удалось получить 	Could not get 
+Не удалось скачать «	Could not download “
+Не удалось скачать: 	Could not download: 
+Не удалось удалить «	Could not delete “
+Не удалось удалить: 	Could not delete: 
+Не указан ник игрока	No player nickname given
+Нет доступных версий	No versions available
+Пользователь и папка	User and folder
+Починить и запустить	Fix and launch
+Права администратора	Administrator rights
+Редактировать сборку	Edit build
+Рестарт через минуту	Restart in a minute
+Скачивается: ресурсы	Downloading: assets
+Ссылка скопирована: 	Link copied: 
+У Adoptium нет Java 	Adoptium has no Java 
+Установка Rustcraft…	Installing Rustcraft…
+Экран сервера закрыт	Server screen closed
+ищу Eclipse Temurin 	looking for Eclipse Temurin 
+нет связи с сервером	no connection to the server
+получаю ключ сервера	getting the server key
+система не проверена	system not checked
+ ГБ свободно на диске	 GB free on disk
+ завершился с ошибкой	 ended with an error
+) — ожидает одобрения	) — awaiting approval
+, но на Modrinth под 	, but on Modrinth for 
+. Попробуйте ещё раз.	. Please try again.
+: число от 1 до 65535	: a number from 1 to 65535
+Minecraft уже запущен	Minecraft is already running
+Minecraft-сервер на «	Minecraft server on “
+Modrinth недоступен (	Modrinth unavailable (
+[FIX] Не получилось: 	[FIX] Didn't work: 
+[PROFILES] пропускаю 	[PROFILES] skipping 
+[RUSTCRAFT] Скачиваю 	[RUSTCRAFT] Downloading 
+[ZT] join через API: 	[ZT] join via API: 
+[styles] сцена есть: 	[styles] scene exists: 
+blauncher.ru ответил 	blauncher.ru answered 
+sudo не принял пароль	sudo did not accept the password
+» и нужные ему моды (	” and the mods it needs (
+Введите пароль от VPS	Enter the VPS password
+Войти через Microsoft	Sign in with Microsoft
+Доверять новому ключу	Trust the new key
+Загрузка не удалась: 	Download failed: 
+Копировать выделенное	Copy selection
+Например, Хардкор SMP	For example, Hardcore SMP
+Не удалось одобрить: 	Could not approve: 
+Не удалось разобрать 	Could not parse 
+Недопустимая версия: 	Invalid version: 
+Нет доступной версии 	No version available 
+Обновление скачано в 	Update downloaded to 
+Первое подключение к 	First connection to 
+Пересоздать настройки	Recreate settings
+Переустановить сервер	Reinstall server
+Переустановка сервера	Reinstalling the server
+Проверить подключение	Check connection
+Пустой путь в сборке.	Empty path in the build.
+Сервер не остановился	The server did not stop
+Сервер перенесён на «	Server moved to “
+Скачивается: ресурсы 	Downloading: assets 
+Служба не запустилась	The service did not start
+Странное имя архива: 	Strange archive name: 
+выдать предмет игроку	give an item to a player
+добираю недокачанное 	fetching what was not downloaded 
+забанить игрока по IP	ban a player by IP
+изменить границу мира	change the world border
+проиграть звук игроку	play a sound to a player
+убить игрока/сущность	kill a player/entity
+ Minecraft невозможен.	 Minecraft is impossible.
+ ГБ — игра запущена с 	 GB — the game was started with 
+ в брандмауэре хостера	 in the host's firewall
+ или в списке игроков.	 or in the player list.
+ не прислал ключ хоста	 did not send a host key
+ недоступен в этой JVM	 is not available in this JVM
+ панель пока не ставит	 the panel does not install yet
+ — заменить подходящей	 — replace with a suitable one
+ — это не одна сборка.	 — this is not one build.
+), повтор через 5 с...	), retrying in 5 s...
+RCON закрыл соединение	RCON closed the connection
+[FIX] Включён обратно 	[FIX] Turned back on 
+[LAUNCH] Лог запуска: 	[LAUNCH] Launch log: 
+[ZT] Выход из комнаты 	[ZT] Leaving room 
+» установлен и запущен	” installed and started
+В лаунчере нет сборок.	There are no builds in the launcher.
+Градиент плитки сборки	Build tile gradient
+Затемнение при запуске	Dimming while launching
+Игрок на вашем сервере	Player on your server
+Копировать всю консоль	Copy the whole console
+На диске VPS свободно 	Free on the VPS disk: 
+Не удалось запустить: 	Could not start: 
+Не удалось поставить «	Could not install “
+Не указан пользователь	No user given
+Неизвестная настройка 	Unknown setting 
+Перезапустить проверку	Restart the check
+Подключение работает (	The connection works (
+Публичная — вход сразу	Public — join right away
+Скачивание обновления…	Downloading the update…
+Странный тег выпуска: 	Strange release tag: 
+Упал, перезапускается…	Crashed, restarting…
+Файл ключа не найден: 	Key file not found: 
+Файл сборки не найден.	Build file not found.
+Шейдеры не установлены	No shaders installed
+вместо неё включается 	instead it turns on 
+запуск службы ZeroTier	starting the ZeroTier service
+не нужно — чистое ядро	not needed — plain core
+обработка файлов игры 	processing game files 
+перезагрузить датапаки	reload datapacks
+разбанить игрока по IP	unban a player by IP
+сервер работает: порт 	server running: port 
+ МБ — остальное занято 	 MB — the rest is taken 
+ МБ) — архив повреждён?	 MB) — is the archive damaged?
+ МБ, а сервер занимает 	 MB, and the server takes 
+ нет официального скина	 has no official skin
+) — беру уже скачанный 	) — taking the already downloaded 
+. Ищу их на Modrinth...	. Looking for them on Modrinth...
+NUL в аргументе команды	NUL in a command argument
+[BLCORE] Не подключён: 	[BLCORE] Not connected: 
+[LIBRARIES] Перекачана 	[LIBRARIES] Re-downloaded 
+[RUSTCRAFT] Установлен 	[RUSTCRAFT] Installed 
+[fonts] не загрузился: 	[fonts] failed to load: 
+friends.json нечитаем (	friends.json is unreadable (
+» предъявил другой ключ	” presented a different key
+Введите ключ активации.	Enter the activation key.
+Датапаки не установлены	No datapacks installed
+Загрузить на сервер в /	Upload to the server into /
+Импортированная сборка 	Imported build 
+Не удалось остановить: 	Could not stop: 
+Не удалось скачать Java	Could not download Java
+Не удалось скачать файл	Could not download the file
+Не указан адрес сервера	No server address given
+Небезопасная ссылка на 	Unsafe link to 
+Непредвиденная ошибка: 	Unexpected error: 
+Нет доступной Java для 	No Java available for 
+Отменить рестарт (60 с)	Cancel restart (60 s)
+Папка сервера не своя: 	Server folder is not ours: 
+Пароль ключа, если есть	Key password, if any
+Подсветка при наведении	Hover highlight
+Проверка подключения...	Checking connection...
+Путь вне папки сборки: 	Path outside the build folder: 
+Скачивается: библиотеки	Downloading: libraries
+Текст на красной кнопке	Text on the red button
+включить автосохранение	turn on auto-save
+можно в настройках игры	in the game settings
+не нужно — новый сервер	not needed — new server
+показать игроков онлайн	show players online
+распределяется по окну.	is spread across the window.
+ · моды серверу не нужны	 · the server needs no mods
+ · не закрывайте лаунчер	 · don't close the launcher
+ с не скачалось ничего (	 s nothing downloaded (
+ с — процесс остановлен.	 s — the process was stopped.
+ — подробности в журнале	 — details in the log
+Telegram-канал BLauncher	BLauncher Telegram channel
+[FIX] Убран испорченный 	[FIX] Removed the broken 
+[NEOFORGE] Не скачалась 	[NEOFORGE] Not downloaded: 
+[fonts] ошибка загрузки 	[fonts] load error 
+null в аргументе команды	null in a command argument
+systemd не принял службу	systemd did not accept the service
+» и агент на VPS удалены	” and the agent on VPS removed
+В установщике Forge нет 	The Forge installer has no 
+Весь VPS: память занята 	Whole VPS: memory used 
+Градиент кнопки «Играть»	“Play” button gradient
+Градиент кнопки для 26.x	Button gradient for 26.x
+Запрашиваем код входа...	Requesting the login code...
+Игра закрылась с ошибкой	The game closed with an error
+На Ely.by нет скина для 	Ely.by has no skin for 
+Нажмите «Играть» ещё раз	Press “Play” again
+Найдено папок с модами: 	Mod folders found: 
+Не требуется для Pumpkin	Not required for Pumpkin
+Не удалось открыть папку	Could not open the folder
+Не удалось скачать бэкап	Could not download the backup
+Не удалось создать бэкап	Could not create the backup
+Не удалось создать папку	Could not create the folder
+Не удалось удалить бэкап	Could not delete the backup
+Недопустимое имя файла: 	Invalid file name: 
+Открыть Центр обновления	Open Windows Update
+Сервер не перезапустился	The server did not restart
+Сервер уже в мониторинге	The server is already monitored
+Скачивается: библиотеки 	Downloading: libraries 
+Скачивание архива сборки	Downloading the build archive
+Скин загружен в MineSkin	Skin uploaded to MineSkin
+Текст на кнопке «Играть»	Text on the “Play” button
+Установить вместе с ними	Install together with them
+выгнать игрока с сервера	kick a player from the server
+забанить игрока по имени	ban a player by name
+загрузчик просит версию 	the loader asks for version 
+задать точку спавна мира	set the world spawn point
+отключить автосохранение	turn off auto-save
+управляет видеокартой.\n\n	controls the graphics card.\n\n
+\n\nДоверять этому серверу?	\n\nTrust this server?
+ (сервер ответил ошибкой)	 (the server answered with an error)
+ не найден — проверьте IP	 not found — check the IP
+ непригоден, отложен как 	 is unusable, postponed as 
+ панель пока не переносит	 the panel does not move yet
+ с переносом сервера с ПК	 with moving the server from PC
+ убраны, бэкапы оставлены	 removed, backups kept
+ — больше серверу не дать	 — no more for the server
+ — отправь ссылку друзьям	 — send the link to friends
+) — с тех пор игра падает	) — since then the game crashes
+, а подходящей версии нет	, and there is no suitable version
+: не дождались ответа за 	: no answer in 
+Fabric, Forge и NeoForge.	Fabric, Forge and NeoForge.
+[ZT] ZeroTier установлен.	[ZT] ZeroTier installed.
+[ZT] Не удалось покинуть 	[ZT] Could not leave 
+echo "бэкап $NAME готов"\n	echo "backup $NAME ready"\n
+tar не распаковал архив: 	tar did not unpack the archive: 
+Выберите локальный сервер	Choose a local server
+Выберите сборку (.mrpack)	Choose a build (.mrpack)
+Не удалось запустить игру	Could not start the game
+Не удалось подключиться: 	Could not connect: 
+Недопустимое имя бэкапа: 	Invalid backup name: 
+Недопустимое имя сборки: 	Invalid build name: 
+Недопустимый id сервера: 	Invalid server id: 
+Ничего не уйдёт в игру — 	Nothing goes to the game — 
+Нужны дополнительные моды	Additional mods needed
+Отпечаток ключа сервера:\n	Server key fingerprint:\n
+Пароль RCON не читается: 	RCON password unreadable: 
+Пароль sudo, если не root	sudo password, if not root
+Перезапуск сервера через 	Server restart in 
+Ресурспаки не установлены	No resource packs installed
+Связь с RCON прервалась: 	RCON connection lost: 
+Сервер сейчас не отвечает	The server is not answering now
+Скачивается Java для игры	Downloading Java for the game
+Управляющий символ в пути	Control character in the path
+в /opt/blauncher/backups.	in /opt/blauncher/backups.
+выбираю последнюю версию 	picking the latest version 
+заполнить область блоками	fill an area with blocks
+лежит дважды — оставляем 	is there twice — keeping 
+очистить инвентарь игрока	clear a player's inventory
+разбанить игрока по имени	unban a player by name
+свежий бэкап. Продолжить?	a fresh backup. Continue?
+сменить режим игры игроку	change a player's game mode
+ · Minecraft не установлен	 · Minecraft is not installed
+ · считаю, что переносить…	 · counting what to move…
+ мин — обновляю заранее...	 min — updating in advance...
+ минут. Последняя строка: 	 minutes. Last line: 
+ не выпущен для Minecraft 	 is not released for Minecraft 
+ подозрительно большой (> 	 is suspiciously large (> 
+ файл(ов) сборки — см. лог	 build file(s) — see the log
+[LIB] Докачиваю по одной: 	[LIB] Fetching one by one: 
+[ZT] Установщик сохранён: 	[ZT] Installer saved: 
+Для отката нужно примерно 	A rollback needs about 
+Мод не подходит к сборке «	The mod does not fit build “
+Название сборки в лаунчере	Build name in the launcher
+Не удалось открыть папку: 	Could not open the folder: 
+Не удалось перезапустить: 	Could not restart: 
+Не удалось подключиться к 	Could not connect to 
+Не удалось скачать бэкап: 	Could not download the backup: 
+Не удалось создать папку: 	Could not create the folder: 
+Не удаётся подключиться к 	Cannot connect to 
+Онлайн — сервер не запущен	Online — the server is not running
+Память серверу — от 512 МБ	Server memory — from 512 MB
+Перезапуск через 10 секунд	Restart in 10 seconds
+Приватная — я одобряю вход	Private — I approve joining
+Проблем в модах не нашлось	No problems found in the mods
+Сборка Modrinth (*.mrpack)	Modrinth build (*.mrpack)
+Старые настройки плагина «	Old plugin settings “
+Странное имя jar сервера: 	Strange server jar name: 
+Токен Minecraft просрочен 	The Minecraft token expired 
+Токену Minecraft осталось 	The Minecraft token has left 
+Установка сборки прервана.	Build installation interrupted.
+включить/выключить датапак	turn a datapack on/off
+выполнить функцию датапака	run a datapack function
+показать список забаненных	show the ban list
+управление таблицами очков	manage scoreboards
+ (в самом моде не прописан)	 (not stated in the mod itself)
+ - сервер не будет запущен.	 - the server will not be started.
+ ресурсов для старой версии	 assets for an old version
+ уже за другими серверами (	 already taken by other servers (
+[BLauncher] Не отправлено: 	[BLauncher] Not sent: 
+[FIX] Modrinth недоступен (	[FIX] Modrinth unavailable (
+[LOADER] Прошлая установка 	[LOADER] Previous installation 
+Выберите версию и загрузчик	Choose a version and a loader
+Выберите память для сервера	Choose memory for the server
+Готово — можно звать друзей	Done — you can invite friends
+Не удалось переустановить: 	Could not reinstall: 
+Не удалось проверить ключ: 	Could not check the key: 
+Не удалось скачать сборку: 	Could not download the build: 
+Не удалось удалить адаптер 	Could not remove the adapter 
+Нет подключённых сателлитов	No connected satellites
+Отпечаток сервера изменился	The server fingerprint changed
+Список бэкапов недоступен: 	Backup list unavailable: 
+Текст на затемнении запуска	Text on the launch dimming
+Установка Minecraft-сервера	Installing the Minecraft server
+открытая — вход сразу по ID	public — join right away by ID
+разбросать игроков по карте	spread players over the map
+ · папка модов не читается: 	 · the mods folder is unreadable: 
+ — лицензия есть · профиль «	 — licence present · profile “
+, беру значения по умолчанию	, using the default values
+SFTP на сервере недоступен: 	SFTP on the server is unavailable: 
+[LOADER] Не удалось удалить 	[LOADER] Could not delete 
+apt не смог поставить пакеты	apt could not install the packages
+Без них игра не запустится:\n	Without them the game will not start:\n
+Вставь код, который прислали	Paste the code you were sent
+Запускаю обычную Java-версию	Starting the regular Java version
+На blauncher.ru нет сборки *	blauncher.ru has no build *
+Не удалось открыть браузер: 	Could not open the browser: 
+Не удалось подобрать сборку 	Could not pick a build 
+Не удалось создать комнату: 	Could not create the room: 
+Недопустимый путь в сборке: 	Invalid path in the build: 
+Онлайн — подключаюсь к RCON…	Online — connecting to RCON…
+Перенос мира и настроек с ПК	Moving the world and settings from PC
+Пока нет доступных плагинов.	No plugins available yet.
+Сервер вернул пустой ответ: 	The server returned an empty answer: 
+Сервер добавлен в мониторинг	Server added to monitoring
+Список изменений недоступен.	Changelog unavailable.
+У сборки не записана версия 	The build has no recorded version 
+Файл скачался повреждённым (	The file downloaded damaged (
+Час перезапуска — от 0 до 23	Restart hour — from 0 to 23
+в сборке нет серверных модов	the build has no server mods
+модов с локального сервера: 	mods from the local server: 
+системой и другими серверами	the system and other servers
+скачиваю и проверяю Temurin 	downloading and checking Temurin 
+управление командами игроков	manage player commands
+ или под другим пользователем	 or under another user
+ — зайти может не получиться.	 — joining may not work.
+. Последнее, что он написал:\n	. The last thing it wrote:\n
+Fabric Meta недоступен (HTTP 	Fabric Meta unavailable (HTTP 
+RCON ответил не на тот запрос	RCON answered a different request
+[ZT] ZeroTier уже установлен.	[ZT] ZeroTier is already installed.
+» — не число, оставлена общая	” — not a number, the shared one is kept
+Не сошлась контрольная сумма 	Checksum mismatch 
+Не удалось включить автобэкап	Could not turn on auto-backup
+Не удалось зашифровать секрет	Could not encrypt the secret
+Не удалось создать SSH-ключ: 	Could not create the SSH key: 
+Непредвиденная ошибка входа: 	Unexpected login error: 
+Обновлено, сервер перезапущен	Updated, the server restarted
+Проверяю Rustcraft на GitHub…	Checking Rustcraft on GitHub…
+Связь с сервером прервалась: 	Connection to the server lost: 
+Сервер не дошёл до «Done» за 	The server did not reach “Done” in 
+Сервер ответил не JSON (HTTP 	The server answered not JSON (HTTP 
+Хранилище ключей недоступно: 	Key storage unavailable: 
+Что ещё сделать или починить?	What else should we make or fix?
+выдать права оператора игроку	give a player operator rights
+выдать/установить опыт игроку	give/set a player's experience
+остановить проигрывание звука	stop playing a sound
+проверяю вход по новому ключу	checking login with the new key
+ · папка сервера не читается: 	 · the server folder is unreadable: 
+ не найден — поставьте вручную	 not found — install it manually
+) — подробности в журнале игры	) — details in the game log
+). Этому можно дать не больше 	). This one can get no more than 
+. Запись в лаунчере оставлена.	. The launcher entry is kept.
+. Подробности — в журнале ниже	. Details — in the log below
+. Причина — в консоли сервера.	. The reason is in the server console.
+[JAVA] Распаковка не удалась (	[JAVA] Unpacking failed (
+[ZT] Служба ZeroTier запущена.	[ZT] ZeroTier service started.
+[fonts] загружено начертаний: 	[fonts] faces loaded: 
+curl и сертификаты установлены	curl and certificates installed
+systemd уже поднял его заново.	systemd has already brought it back.
+» скорее всего не запустится:\n	” will most likely not start:\n
+» уже отсутствовал на сервере.	” was already missing on the server.
+Вход по новому ключу не удался	Login with the new key failed
+Выберите файл приватного ключа	Choose the private key file
+Добираю недокачанные ресурсы: 	Fetching missing assets: 
+Дождитесь конца установки на «	Wait until the installation on “
+Игра закрылась с ошибкой (код 	The game closed with an error (code 
+Не найден файл запуска сервера	The server start file was not found
+Не удалось выключить автобэкап	Could not turn off auto-backup
+Не удалось прочитать .mrpack: 	Could not read the .mrpack: 
+Не удалось скачать установщик 	Could not download the installer 
+Не удалось убрать сервер с VPS	Could not remove the server from VPS
+Подозрительный путь в архиве: 	Suspicious path in the archive: 
+Скачиваю Java для Rustcraft · 	Downloading Java for Rustcraft · 
+Странное имя в папке сервера: 	Strange name in the server folder: 
+Установщик завершился с кодом 	The installer ended with code 
+Файл повреждён, качаю заново: 	The file is damaged, downloading again: 
+Что не работало или сломалось?	What didn't work or broke?
+каждый должен начинаться с «-»	each must start with “-”
+мод не поддерживает Minecraft 	the mod does not support Minecraft 
+найти ближайшую структуру/биом	find the nearest structure/biome
+не совпала контрольная сумма; 	checksum mismatch; 
+у локального сервера нет модов	the local server has no mods
+ xbox.com, затем войдите снова.	 xbox.com, then sign in again.
+ · перезапусков после падений: 	 · restarts after crashes: 
+ МБ свободного места, на VPS — 	 MB of free space, on VPS — 
+ повреждён (ожидалось 32 байта)	 is damaged (32 bytes expected)
+ формат .mrpack не поддерживает	 the .mrpack format does not support
+ ядер). Диагностика сохранена: 	 cores). Diagnostics saved: 
+Java аварийно завершилась (код 	Java crashed (code 
+[NEOFORGE] С зеркала не пришло 	[NEOFORGE] The mirror did not send 
+[modal] окно сцены: %.0fx%.0f%n	[modal] scene window: %.0fx%.0f%n
+» удалён. Перезапустите сервер.	” removed. Restart the server.
+Не скачались библиотеки Forge: 	Forge libraries not downloaded: 
+Не удалось расшифровать секрет 	Could not decrypt the secret 
+Неверная контрольная сумма для 	Wrong checksum for 
+Новый запрос на вход в комнату 	New request to join the room 
+Прервано ожидание ZeroTier CLI.	Waiting for the ZeroTier CLI interrupted.
+Собрано в BLauncher из сборки «	Built in BLauncher from build “
+Устанавливается загрузчик модов	Installing the mod loader
+архитектура, память, диск, порт	architecture, memory, disk, port
+загрузчик требует другую версию	the loader requires another version
+задать точку возрождения игрока	set a player's respawn point
+изменить/показать игровое время	change/show the game time
+телепортировать игрока/сущность	teleport a player/entity
+убрать права оператора у игрока	take operator rights from a player
+ (переносимый мир и настройки — 	 (the movable world and settings — 
+ МБ — для сервера нужно хотя бы 	 MB — the server needs at least 
+ нет плащей, известных capes.dev	 has no capes known to capes.dev
+) — качаю выпуск автора с GitHub	) — downloading the author's release from GitHub
+1. Обновите драйвер видеокарты:\n	1. Update the graphics card driver:\n
+; код дружбы будет создан заново	; the friend code will be created again
+Xbox Live отказал во входе (код 	Xbox Live refused the login (code 
+[BLCORE] Отметка не поставлена: 	[BLCORE] Mark not set: 
+[JAVA] Папку пока не перенести (	[JAVA] Can't move the folder yet (
+[NEOFORGE] Список версий для MC 	[NEOFORGE] Version list for MC 
+[ZT] Удалён виртуальный адаптер 	[ZT] Removed the virtual adapter 
+Выберите ядро и версию Minecraft	Choose a core and a Minecraft version
+Закройте игру и нажмите ещё раз.	Close the game and press again.
+Ключ этого сервера не читается: 	This server's key is unreadable: 
+Не удалось подключиться к агенту	Could not connect to the agent
+Не удалось создать пользователя 	Could not create the user 
+Не удалось убрать сервер с VPS: 	Could not remove the server from VPS: 
+Не установлен драйвер видеокарты	No graphics card driver installed
+Получение информации о сборке...	Getting build information...
+Порт Minecraft: от 1024 до 65535	Minecraft port: from 1024 to 65535
+Скачанный установщик повреждён: 	The downloaded installer is damaged: 
+Снять бан можно командой pardon 	The ban can be lifted with the pardon command 
+Соединение оборвалось: получено 	The connection broke: received 
+Списки ниже — из файлов сервера.	The lists below come from the server files.
+Укажите IP-адрес или имя сервера	Enter the server IP address or name
+Управляющий символ в имени файла	Control character in the file name
+запланировать выполнение функции	schedule a function
+зачаровать предмет в руке игрока	enchant the item in a player's hand
+поставить блок в указанной точке	place a block at a given point
+сервер работает от пользователя 	the server runs as user 
+управление белым списком игроков	manage the player whitelist
+ · 0% · первый раз это 1–4 минуты	 · 0% · the first time takes 1–4 minutes
+ библиотек с зеркала blauncher.ru	 libraries from the blauncher.ru mirror
+ следующая попытка скачает заново	 the next attempt will download again
+). Попробуйте войти на xbox.com —	). Try signing in at xbox.com —
+? Вернуть можно только из бэкапа.	? It can only be restored from a backup.
+[LOADER] Скачивание установщика: 	[LOADER] Downloading the installer: 
+[SETTINGS] Офлайн-режим выключен.	[SETTINGS] Offline mode is off.
+» установлен, сервер перезапущен.	” installed, the server restarted.
+Внимание: не скачалось ресурсов: 	Warning: assets not downloaded: 
+Не удалось передать файл на VPS: 	Could not send the file to VPS: 
+Не удалось поменять память и ядра	Could not change memory and cores
+Не удалось прочитать время на VPS	Could not read the time on VPS
+Не удалось скачать архив сборки: 	Could not download the build archive: 
+Не удалось создать комнату: HTTP 	Could not create the room: HTTP 
+Не удалось удалить комнату: HTTP 	Could not delete the room: HTTP 
+Первый цвет градиента = цвет фона	First gradient colour = background colour
+Проверяю файлы игры после вылета…	Checking game files after the crash…
+в сборке нет ссылки на скачивание	the build has no download link
+выдать/отозвать достижения игроку	grant/revoke a player's advancements
+заспавнить добычу из таблицы лута	spawn loot from a loot table
+ник, токен и папки задаёт лаунчер	the launcher sets the nickname, token and folders
+— доступны только оффлайн-серверы	— only offline servers are available
+ была прервана — убираю её остатки	 was interrupted — removing its leftovers
+ попробуйте установить его заново.	 try installing it again.
+ — создайте сборку под эту версию.	 — create a build for this version.
+1. Установите драйвер видеокарты:\n	1. Install the graphics card driver:\n
+Windows может выделить ещё только 	Windows can give only 
+[BLauncher] Команда не выполнена: 	[BLauncher] Command not run: 
+[LIBRARIES] Не удалось перекачать 	[LIBRARIES] Could not re-download 
+» импортирована, скачиваем моды...	” imported, downloading mods...
+Закройте лишнее и попробуйте снова	Close other programs and try again
+На этом ПК нет локальных серверов.	This PC has no local servers.
+Не удалось достучаться до агента (	Could not reach the agent (
+Не удалось загрузить моды на VPS: 	Could not upload mods to VPS: 
+Не удалось положить файл на сервер	Could not put the file on the server
+Не удалось получить данные версии 	Could not get version data 
+Не удалось установить обновление: 	Could not install the update: 
+Плагин активирован на этом сервере	Plugin activated on this server
+Порт SSH должен быть от 1 до 65535	SSH port must be from 1 to 65535
+Установлено, перезапускаем сервер…	Installed, restarting the server…
+не удалось прочитать шаблон темы: 	could not read the theme template: 
+сохранить мир на диск прямо сейчас	save the world to disk right now
+ - для этой версии Minecraft её нет	 - not available for this Minecraft version
+ xbox.com, подтвердите и повторите.	 xbox.com, confirm and try again.
+ он обычно пишет причину подробнее.	 it usually writes the reason in more detail.
+) — проверяю только по файлам модов	) — checking by mod files only
+DPAPI: неожиданный ответ PowerShell	DPAPI: unexpected PowerShell answer
+RCON прислал пакет странной длины: 	RCON sent a packet of strange length: 
+[PROFILES] пропускаю негодный файл 	[PROFILES] skipping a bad file 
+»: вход через Microsoft не выполнен	”: Microsoft sign-in not done
+Бэкап создан, но не найден в списке	Backup created but not found in the list
+Не удалось открыть туннель к порту 	Could not open a tunnel to port 
+Нужен пароль sudo, а он не сохранён	A sudo password is needed, but it is not saved
+Перезапуск сервера через 60 секунд.	Server restart in 60 seconds.
+Установка ZeroTier не завершилась: 	ZeroTier installation did not finish: 
+Файл больше, чем помещается в tar: 	The file is larger than tar can hold: 
+максимума для этого ПК, снижено до 	of the maximum for this PC, reduced to 
+настраивается... (обычно 10–30 сек)	setting up... (usually 10–30 s)
+описание Fabric с meta.fabricmc.net	Fabric description from meta.fabricmc.net
+показать заголовок на экране игрока	show a title on a player's screen
+пусто — общее не задано (например, 	empty — no shared value set (for example, 
+ — без них игра может не запуститься	 — the game may not start without them
+) — все файлы положены внутрь архива	) — all files are put inside the archive
+[NATIVES] убрано осиротевших папок: 	[NATIVES] orphaned folders removed: 
+[ZT] join через API не удался (HTTP 	[ZT] join via API failed (HTTP 
+[ZT] Установщик ZeroTier уже скачан.	[ZT] ZeroTier installer already downloaded.
+echo "плановый перезапуск выполнен"\n	echo "scheduled restart done"\n
+ufw выключен — игровой порт открыт; 	ufw is off — the game port is open; 
+»? Настройки сборки будут потеряны. 	”? The build settings will be lost. 
+Дождитесь окончания текущей операции	Wait until the current operation finishes
+Не удалось одобрить участника: HTTP 	Could not approve the member: HTTP 
+Не удалось открыть браузер. Ссылка: 	Could not open the browser. Link: 
+Не удалось открыть поток с сервера: 	Could not open a stream from the server: 
+Не удалось прочитать индекс ассетов 	Could not read the asset index 
+Нельзя удалить папку сервера целиком	The whole server folder cannot be deleted
+У сборки не указана версия Minecraft	The build has no Minecraft version
+Укажите пользователя (например root)	Enter the user (for example root)
+веб-консоли хостера: ssh-keygen -lf 	host's web console: ssh-keygen -lf 
+загрузчик просит убрать: несовместим	the loader asks to remove: incompatible
+на Modrinth указан обязательным для 	on Modrinth it is marked required for 
+после загрузки перезапустите сервер.	restart the server after the upload.
+ ГБ, иначе она вылетит посреди игры. 	 GB, otherwise it will crash in the middle of the game. 
+ Сам VPS и файлы на нём не трогаются.	 The VPS itself and its files are not touched.
+ мин — считаю, что UAC не подтвердили	 min — assuming UAC was not confirmed
+. Проверьте права на папку установки.	. Check the permissions on the install folder.
+[JAVA] Переношу файлы копированием...	[JAVA] Moving files by copying...
+[RUSTCRAFT] blauncher.ru недоступен (	[RUSTCRAFT] blauncher.ru unavailable (
+«Проверить обновления» → «Загрузить».	“Check for updates” → “Download”.
+Готовые шаги при повторе пропустятся.	Finished steps will be skipped on retry.
+Команда на сервере не завершилась за 	The command on the server did not finish in 
+Найти мод в сборке или на Modrinth...	Find a mod in the build or on Modrinth...
+Не удалось прочитать состояние службы	Could not read the service state
+Недопустимое имя пользователя Linux: 	Invalid Linux user name: 
+Откройте лаунчер — в консоли причина.	Open the launcher — the reason is in the console.
+Папка локального сервера не найдена: 	Local server folder not found: 
+Рестарт отменён: открыт другой сервер	Restart cancelled: another server is open
+Сервер упал при запуске. Из журнала:\n	The server crashed on start. From the log:\n
+Установщик завершился с кодом (-?\\d+)	The installer ended with code (-?\\d+)
+Это не сборка Modrinth: в архиве нет 	This is not a Modrinth build: the archive has no 
+Это сборка не для Minecraft (game = "	This build is not for Minecraft (game = "
+дальше лаунчер входит только по ключу	from now on the launcher logs in by key only
+открыть локальную игру для сети (LAN)	open the local game to the network (LAN)
+создаю ключ ed25519 для этого сервера	creating an ed25519 key for this server
+ (пароль — только на этом ПК и на VPS)	 (the password is only on this PC and on the VPS)
+ автокопий; ручные бэкапы не трогает.\n	 automatic copies; manual backups are not touched.\n
+. Только для клиента — их не повезём: 	. Client only — we won't take them: 
+Mojang не публикует сервер для версии 	Mojang does not publish a server for version 
+[ASSETS] Докачано со второго прохода: 	[ASSETS] Fetched on the second pass: 
+[BUILDS] обход папок модов не удался: 	[BUILDS] scanning mod folders failed: 
+[JAVA] Для игры — своя Java лаунчера: 	[JAVA] For the game — the launcher's own Java: 
+[LIB] Не скачалась и со второго раза: 	[LIB] Not downloaded on the second try either: 
+[ZT] Скачиваю ZeroTier One (~12 МБ)...	[ZT] Downloading ZeroTier One (~12 MB)...
+[theme] не удалось применить палитру «	[theme] could not apply palette “
+Не удалось загрузить скин в MineSkin: 	Could not upload the skin to MineSkin: 
+Не удалось запустить службу ZeroTier: 	Could not start the ZeroTier service: 
+Не удалось прочитать, что стоит на VPS	Could not read what is installed on the VPS
+закрытая — вход по одобрению владельца	private — join after the owner approves
+не удалось прочитать пресеты палитры: 	could not read the palette presets: 
+ байт). Проверьте интернет и повторите.	 bytes). Check your internet and try again.
+ мин назад — обновляю перед запуском...	 min ago — updating before launch...
+ проблема в регионе аккаунта Microsoft.	 a problem with the Microsoft account region.
+ скачайте новую версию с сайта вручную.	 download the new version from the site manually.
+# Создано BLauncher: автобэкап сервера 	# Created by BLauncher: server auto-backup 
+) — запись всё равно убрана из лаунчера	) — the entry is removed from the launcher anyway
+) — связь с серверами Minecraft пропала	) — the connection to the Minecraft servers was lost
+[ASSETS] Не удалось разложить ресурсы: 	[ASSETS] Could not lay out the assets: 
+Автобэкап включён: первый — этой ночью.	Auto-backup on: the first one is tonight.
+Не удалось включить плановый перезапуск	Could not turn on the scheduled restart
+Отметьте, что принимаете EULA Minecraft	Tick to accept the Minecraft EULA
+Путь должен быть внутри папки сервера: 	The path must be inside the server folder: 
+Сначала подключите агент этого сервера.	Connect this server's agent first.
+У этой сборки нет файла для скачивания.	This build has no file to download.
+чаще всего — обновите драйверы обеих.\n\n	most often — update the drivers of both.\n\n
+ (Modrinth не ответил — проверьте позже)	 (Modrinth did not answer — check later)
+ (возможны пропавшие звуки или текстуры)	 (sounds or textures may be missing)
+ повреждён — его нужно проверить вручную	 is damaged — it needs to be checked manually
+ файл(ов) сборка не разрешает скачивать 	 file(s) the build does not allow to download 
+) - использую ранее загруженный список (	) - using the previously downloaded list (
+) и будет и дальше занимать свою память.	) and will keep taking its memory.
+[WATCHDOG] Высокая загрузка процессора (	[WATCHDOG] High CPU load (
+Агент подключен. Отпечаток сертификата: 	Agent connected. Certificate fingerprint: 
+Не удалось выключить плановый перезапуск	Could not turn off the scheduled restart
+Не удалось получить адрес узла ZeroTier.	Could not get the ZeroTier node address.
+Не удалось скачать установщик ZeroTier: 	Could not download the ZeroTier installer: 
+Отпечаток ключа сервера изменился: было 	The server key fingerprint changed: was 
+Сервер не принял логин или пароль (ключ)	The server did not accept the login or password (key)
+лицензионное соглашение Minecraft (EULA)	the Minecraft licence agreement (EULA)
+модов сборки: игре не хватило его кода (	of the build's mods: the game was missing its code (
+напрямую — их придётся добавить вручную.	directly — they will have to be added manually.
+принудительно держать чанки загруженными	force chunks to stay loaded
+ МБ · это один раз, не закрывайте лаунчер	 MB · this is a one-time thing, don't close the launcher
+ мод(ов) скачать не удалось — см. консоль	 mod(s) could not be downloaded — see the console
+ не совпала — файл повреждён при загрузке	 mismatch — the file was damaged while downloading
+ — создайте её, затем нажмите «+» ещё раз	 — create it, then press “+” again
+DPAPI: PowerShell не ответил за 30 секунд	DPAPI: PowerShell did not answer in 30 seconds
+Java для запуска установщика не найдена: 	Java to run the installer not found: 
+[CONFIG] не удалось отложить битый файл: 	[CONFIG] could not set aside the broken file: 
+[LAUNCH] Не удалось создать лог запуска: 	[LAUNCH] Could not create the launch log: 
+[SETTINGS] Анонимная статистика включена.	[SETTINGS] Anonymous statistics on.
+Вайтлист включается у запущенного сервера	The whitelist turns on while the server is running
+Главный ключ хранилища секретов повреждён	The secret storage master key is damaged
+Дождитесь окончания подключения к серверу	Wait until the connection to the server finishes
+Не удалось разложить моды в папку сервера	Could not lay out the mods in the server folder
+Не удалось разобрать ответ сервера (HTTP 	Could not parse the server answer (HTTP 
+Не удалось сохранить ник участника: HTTP 	Could not save the member nickname: HTTP 
+Плановый перезапуск сервера через 5 минут	Scheduled server restart in 5 minutes
+Путь не может выходить из папки сервера: 	The path cannot leave the server folder: 
+Раскладываем ресурсы для старой версии...	Laying out assets for the old version...
+Сервер не ответил на команду за 15 секунд	The server did not answer the command in 15 seconds
+У Paper нет сборки сервера для Minecraft 	Paper has no server build for Minecraft 
+выдать/снять эффект зелья игроку или мобу	give/remove a potion effect on a player or mob
+не удалось скачать список версий NeoForge	could not download the NeoForge version list
+скопировать область блоков в другое место	copy an area of blocks to another place
+ МБ памяти — серверу можно дать не больше 	 MB of memory — the server can get no more than 
+ символов вместо 64). Обновление отменено.	 characters instead of 64). The update is cancelled.
+# Память сервера — записано BLauncher\n-Xms	# Server memory — written by BLauncher\n-Xms
+). Чаще всего виноваты драйвер видеокарты 	). Most often the graphics card driver is to blame 
+friends.json нечитаем и не откладывается: 	friends.json is unreadable and cannot be set aside: 
+Вход не удался или истекло время ожидания.	Login failed or timed out.
+На VPS этому серверу можно дать не больше 	On the VPS this server can get no more than 
+Не удалось получить данные о сборке: HTTP 	Could not get build data: HTTP 
+Чего не хватает, что добавить или поменять	What is missing, what to add or change
+автозапуск включён, перезапуск при падении	autostart on, restart on crash
+отправить форматированное сообщение игроку	send a formatted message to a player
+сеть подвела — запускаю установщик ещё раз	the network failed — running the installer again
+сложность игры (peaceful/easy/normal/hard)	game difficulty (peaceful/easy/normal/hard)
+ до 12 — нажмите «Играть» ещё раз. Вернуть 	 to 12 — press “Play” again. You can restore it 
+.jar повреждён (размер не совпал) — докачаю	.jar is damaged (size mismatch) — downloading the rest
+: sha1 не совпал с заявленным, качаю заново	: sha1 does not match the stated one, downloading again
+Fabric Meta не вернул стабильный установщик	Fabric Meta did not return a stable installer
+Fabric установлен не полностью: не скачано 	Fabric is not fully installed: not downloaded 
+«sodium», «jei», «journeymap» или «shaders»	“sodium”, “jei”, “journeymap” or “shaders”
+» — проверьте интернет и попробуйте ещё раз	” — check your internet and try again
+Ещё одну копию можно будет запустить через 	Another copy can be started in 
+Не удалось загрузить архив сервера на VPS: 	Could not upload the server archive to VPS: 
+Не удалось распаковать архив сервера на VPS	Could not unpack the server archive on VPS
+Порт Minecraft должен быть от 1024 до 65535	Minecraft port must be from 1024 to 65535
+Применяю настройки из сборки (overrides)...	Applying settings from the build (overrides)...
+Путь в сборке ведёт за пределы папки игры: 	A path in the build leads outside the game folder: 
+Сами моды останутся на диске, в папке mods\\	The mods themselves stay on disk, in the mods\\ folder
+Сервер создан, но настройки не записались: 	The server was created, but the settings were not written: 
+Спасибо! Ответ отправлен — прочитаем каждый	Thanks! Answer sent — we read every one
+Установщик ZeroTier скачался повреждённым (	The ZeroTier installer downloaded damaged (
+активировать пользовательский триггер очков	activate a custom score trigger
+и нажимайте «Играть»: моды подхватятся сами	and press “Play”: the mods are picked up automatically
+нет доступа — владелец должен одобрить вход	no access — the owner must approve joining
+ качает библиотеки и Minecraft (до 10 минут)	 downloads libraries and Minecraft (up to 10 minutes)
+ — есть версия для неё (обновить по желанию)	 — there is a version for it (update if you like)
+(необратимо), затем уберёт запись из списка.	(irreversible), then removes the entry from the list.
+. Укажите путь к Java в настройках лаунчера.	. Set the Java path in the launcher settings.
+[LAUNCH] В путях есть символы вне кодировки 	[LAUNCH] The paths have characters outside the encoding 
+[modal] карточка: %.0fx%.0f в x=%.2f y=%.2f,	[modal] card: %.0fx%.0f at x=%.2f y=%.2f,
+[restart] не удалось запустить новую копию: 	[restart] could not start a new copy: 
+Не удалось записать ~/.ssh/authorized_keys: 	Could not write ~/.ssh/authorized_keys: 
+Не удалось обновить ~/.ssh/authorized_keys: 	Could not update ~/.ssh/authorized_keys: 
+Файл приватного ключа (id_ed25519, id_rsa …)	Private key file (id_ed25519, id_rsa …)
+Это не похоже на файл ключа: слишком большой	This does not look like a key file: too large
+добавлен после последнего удачного запуска (	added after the last successful launch (
+это не картинка или формат не поддерживается	not an image or the format is not supported
+ (там только Fabric, Quilt, Forge и NeoForge)	 (there are only Fabric, Quilt, Forge and NeoForge)
+ «Установка и удаление программ» и повторите.	 “Add or remove programs” and try again.
+ — запустите её один раз, лаунчер её запомнит	 — run it once, the launcher will remember it
+) не поддерживается: нужен x86_64 или aarch64	) is not supported: x86_64 or aarch64 needed
+[RUSTCRAFT] Докачиваю библиотеку для движка: 	[RUSTCRAFT] Fetching a library for the engine: 
+» пропущена — в .mrpack кладутся только файлы	” skipped — only files go into .mrpack
+Ваш драйвер видеокарты старый — ему примерно 	Your graphics card driver is old — it is about 
+Переключил на обычную Java — нажмите «Играть»	Switched to regular Java — press “Play”
+Служба ZeroTier так и не появилась в системе.	The ZeroTier service never appeared in the system.
+У этой сборки на Modrinth нет ни одной версии	This build has no versions on Modrinth
+на нём упала игра — обновить до свежей версии	the game crashed on it — update to the latest version
+сохраняю мир и приостанавливаю автосохранение	saving the world and pausing auto-save
+… обычно до пары минут, не закрывайте лаунчер	… usually up to a couple of minutes, don't close the launcher
+ для игры… это один раз, не закрывайте лаунчер	 for the game… this is a one-time thing, don't close the launcher
+# Создано BLauncher: ежедневный бэкап сервера 	# Created by BLauncher: daily server backup 
+[NEOFORGE] Не удалось обновить список версий (	[NEOFORGE] Could not update the version list (
+[ZT] установщик признан повреждённым и удалён,	[ZT] the installer was found damaged and deleted,
+»? Это уберёт его только из списка в лаунчере.	”? This only removes it from the launcher list.
+Команда RCON не может содержать перевод строки	An RCON command cannot contain a line break
+Одно нажатие — и мы поймём, что делать дальше.	One click — and we'll know what to do next.
+Пароль RCON этого сервера не найден на этом ПК	This server's RCON password is not found on this PC
+Перезапуск через 1 минуту, сервер сохранит мир	Restart in 1 minute, the server will save the world
+Java распакована, но не запускается на этом VPS	Java is unpacked but does not run on this VPS
+Minecraft-сервер на этом VPS ещё не установлен.	The Minecraft server is not installed on this VPS yet.
+PaperMC вернул неожиданный ответ для Minecraft 	PaperMC returned an unexpected answer for Minecraft 
+[JAVA] Своя Java лаунчера не подошла для игры: 	[JAVA] The launcher's own Java did not suit the game: 
+[ZT] Комната создана на локальном контроллере: 	[ZT] Room created on the local controller: 
+Не удалось получить ссылку на Java у Adoptium: 	Could not get a Java link from Adoptium: 
+Сначала создайте сборку — пак собирается из неё	Create a build first — the pack is made from it
+в теме остались незаполненные токены, например 	the theme has unfilled tokens left, for example 
+отказано в доступе: нужны права администратора.	access denied: administrator rights needed.
+попробует DirectX 12 — нажмите «Играть» ещё раз	will try DirectX 12 — press “Play” again
+ не удалось — закройте его в брандмауэре хостера	 failed — close it in the host's firewall
+ не установилось: Windows не дала заменить файл 	 was not installed: Windows did not let us replace the file 
+ уже занят другой программой — возможно, другим 	 is already taken by another program — perhaps another 
+ — созданы сборки. Проверьте версию и загрузчик.	 — builds created. Check the version and the loader.
+. Проверьте интернет и нажмите «Играть» ещё раз.	. Check your internet and press “Play” again.
+[LOADER] Останавливаю брошенный установщик (PID 	[LOADER] Stopping an abandoned installer (PID 
+» запущен на ПК — остановите его перед переносом	” is running on the PC — stop it before moving
+Активированных плагинов нет — введите ключ ниже.	No activated plugins — enter a key below.
+В сборке указано несколько загрузчиков — выбран 	The build lists several loaders — chosen 
+Неподходящая версия Java для этой версии игры — 	Wrong Java version for this game version — 
+Нет активных комнат — войди в комнату по ID выше	No active rooms — join a room by ID above
+Сначала установите Minecraft-сервер на этот VPS.	Install the Minecraft server on this VPS first.
+Чего не хватает, что улучшить — можно пропустить	What is missing, what to improve — you can skip this
+или становится мутной после сворачивания окна.\n\n	or gets blurry after minimising the window.\n\n
+написать сообщение от имени сервера всем игрокам	write a message to all players on behalf of the server
+ панель пока не ставит — только Vanilla, Fabric, 	 the panel does not install yet — only Vanilla, Fabric, 
+# Создано BLauncher: плановый перезапуск сервера 	# Created by BLauncher: scheduled server restart 
+? Текущий мир и настройки сервера будут потеряны.	? The current world and server settings will be lost.
+[NEOFORGE] maven.neoforged.net недоступен — беру 	[NEOFORGE] maven.neoforged.net unavailable — taking 
+Видеокарте не хватило памяти. Уменьшил дальность 	The graphics card ran out of memory. Reduced the 
+Эта папка больше не считается сборкой BLauncher.\n	This folder is no longer treated as a BLauncher build.\n
+и нажмите «Играть» ещё раз, скачанное не пропадёт	and press “Play” again, what was downloaded is kept
+на нём упала игра, а новее версии нет — выключить	the game crashed on it, and there is no newer version — turn it off
+ (он просрочен, мультиплеер может быть недоступен)	 (it has expired, multiplayer may be unavailable)
+. Панель поддерживает только Ubuntu 22.04 и новее 	. The panel supports only Ubuntu 22.04 and newer 
+» заменён подходящей версией, старый файл выключен	” replaced with a suitable version, the old file turned off
+» могут не сохраниться после обновления. Обновить?	” may not be kept after the update. Update?
+»? Лаунчер остановит сервер и удалит агента с VPS 	”? The launcher will stop the server and remove the agent from VPS 
+Введите ID комнаты или ссылку blauncher/connect/ID	Enter the room ID or a blauncher/connect/ID link
+Имя сборки состоит только из недопустимых символов	The build name has only invalid characters
+Не удалось определить систему: нет /etc/os-release	Could not detect the system: no /etc/os-release
+Ссылка на обновление недоступна — попробуйте позже	The update link is unavailable — try later
+Установка обновления — BLauncher перезапустится...	Installing the update — BLauncher will restart...
+ваш сервер, можно в веб-консоли хостера командой:\n	your server, you can do it in the host's web console with:\n
+ · мир ещё не создан (сервер ни разу не запускался)	 · the world is not created yet (the server has never been started)
+ не принимает подключения — проверьте IP и порт SSH	 does not accept connections — check the IP and SSH port
+ панель пока не переносит — только Vanilla, Paper, 	 the panel does not move yet — only Vanilla, Paper, 
+Rust может работать плохо из-за драйвера видеокарты	Rust may run poorly because of the graphics card driver
+Rustcraft упал на графике Vulkan. Следующий запуск 	Rustcraft crashed on Vulkan graphics. The next launch 
+«Играть» запустит игру и сразу подключит к серверу.	“Play” starts the game and connects to the server right away.
+» поставлен Fabric API — без него мод не запустится	” got Fabric API — the mod will not start without it
+Пакет ресурсов: ссылка должна начинаться с https://	Resource pack: the link must start with https://
+Сервер обновлений не сообщил контрольную сумму для 	The update server did not report a checksum for 
+Ядро скачано, но запускаемый файл сервера не найден	The core is downloaded, but the server start file was not found
+Rustcraft есть только для Windows x64 и Linux x86-64	Rustcraft exists only for Windows x64 and Linux x86-64
+ZeroTier CLI не найден — установите движок ZeroTier.	ZeroTier CLI not found — install the ZeroTier engine.
+[LAUNCH] Не выполнен вход - запуск в оффлайн-режиме.	[LAUNCH] Not signed in - starting in offline mode.
+[ZT] Ожидаю регистрации службы ZeroTier в Windows...	[ZT] Waiting for the ZeroTier service to register in Windows...
+Автобэкап каждую ночь (4:00 МСК), хранить последние 	Auto-backup every night (4:00 Moscow time), keep the last 
+Не удалось распаковать бэкап — текущий мир не тронут	Could not unpack the backup — the current world is untouched
+Переключил обратно на обычную Java: нажмите «Играть»	Switched back to regular Java: press “Play”
+Поэтому сейчас запускается обычная версия на Java.\n\n	So the regular Java version is starting now.\n\n
+изменить игровое правило (мобы, дневной цикл и т.п.)	change a game rule (mobs, day cycle, etc.)
+на VPS нет ни nft, ни iptables — закройте порт RCON 	the VPS has neither nft nor iptables — close the RCON port 
+это пара минут; моды можно добавить в разделе «Моды»	it takes a couple of minutes; mods can be added in the “Mods” section
+ библиотек. Проверьте интернет и повторите установку.	 libraries. Check your internet and repeat the installation.
+# Создано BLauncher. Управляется из лаунчера (сервер 	# Created by BLauncher. Managed from the launcher (server 
+2. Перезагрузите компьютер и снова нажмите «Играть».\n	2. Restart the computer and press “Play” again.\n
+Rustcraft не докачал данные игры — оборвалась связь. 	Rustcraft did not finish downloading game data — the connection broke. 
+[ASSETS] Не удалось разложить ресурсы старой версии: 	[ASSETS] Could not lay out the old version's assets: 
+[NEOFORGE] Не прочитал список библиотек установщика: 	[NEOFORGE] Could not read the installer's library list: 
+» ещё устанавливается — дождитесь окончания установки	” is still installing — wait until the installation finishes
+В этой сборке нет загрузчика модов — проверять нечего	This build has no mod loader — nothing to check
+при следующем «Играть» докачается только остальное.\n\n	the next “Play” will download only the rest.\n\n
+/etc/ssh/sshd_config не выключен PubkeyAuthentication.	/etc/ssh/sshd_config has not turned off PubkeyAuthentication.
+Fabric выходит только для Minecraft 1.14 и новее. Для 	Fabric is released only for Minecraft 1.14 and newer. For 
+[BLauncher] Поток консоли прервался — переподключаюсь…	[BLauncher] The console stream broke — reconnecting…
+[LOADER] Файл установщика повреждён, скачиваю заново: 	[LOADER] The installer file is damaged, downloading again: 
+[SERVER] Не удалось проверить старый процесс сервера: 	[SERVER] Could not check the old server process: 
+Вайтлист включён — зайти могут только игроки из списка	Whitelist on — only players on the list can join
+Введите команду… (Tab — дописать, ↑ — прошлые команды)	Enter a command… (Tab — complete, ↑ — previous commands)
+Не удалось открыть архив сборки (это точно .mrpack?): 	Could not open the build archive (is it really .mrpack?): 
+Не удалось скачать архив сборки: сервер вернул ошибку.	Could not download the build archive: the server returned an error.
+Отпечаток сервера изменился — подключение остановлено.	The server fingerprint changed — connection stopped.
+придётся поставить отдельно, иначе игра не запустится.	must be installed separately, otherwise the game will not start.
+ — создать сборку под эту версию и поставить мод в неё?	 — create a build for this version and put the mod in it?
+. Проверьте подключение к интернету и попробуйте снова.	. Check your internet connection and try again.
+RCON недоступен (сервер ещё запускается или выключен): 	RCON unavailable (the server is still starting or is off): 
+[ZT] Не удалось получить список комнат при выключении: 	[ZT] Could not get the room list on shutdown: 
+[modal] слой окон: %.0fx%.0f (виден %s, управляем %s)%n	[modal] window layer: %.0fx%.0f (visible %s, managed %s)%n
+». Добавите всё, что нужно, — возвращайтесь на главную 	”. Once you've added everything you need, go back to the home screen 
+Подключение отменено: отпечаток сервера не подтверждён.	Connection cancelled: the server fingerprint was not confirmed.
+Сейчас идёт починка сборки — подождите несколько секунд	The build is being fixed now — wait a few seconds
+Сообщение всем игрокам от [СЕРВЕР]… (Enter — отправить)	Message to all players from [SERVER]… (Enter — send)
+выполнить команду с условием (позиция, сущность и т.п.)	run a command with a condition (position, entity, etc.)
+ МБ — выберите меньше или удалите ненужный сервер с VPS.	 MB — choose less or delete an unneeded server from the VPS.
+ МБ — для бэкапа места не хватит. Удалите старые бэкапы.	 MB — not enough space for a backup. Delete old backups.
+ Проверьте интернет (или VPN) и нажмите «Играть» ещё раз	 Check your internet (or VPN) and press “Play” again
+ файлов ресурсов — связь с серверами Minecraft пропадает	 asset files — the connection to the Minecraft servers keeps dropping
+[ZT] Скачанный ранее установщик негодный — качаю заново.	[ZT] The previously downloaded installer is unusable — downloading again.
+[modal] оверлей: %.0fx%.0f в x=%.2f y=%.2f, отступы %s%n	[modal] overlay: %.0fx%.0f at x=%.2f y=%.2f, insets %s%n
+или нажмите «Играть» ещё раз, лаунчер перепроверит файлы	or press “Play” again, the launcher will recheck the files
+процессор. Переключил на обычную Java — нажмите «Играть»	processor. Switched to regular Java — press “Play”
+Подключение без подтверждённого отпечатка хоста запрещено	Connecting without a confirmed host fingerprint is not allowed
+ставлю curl и сертификаты через apt (до нескольких минут)	installing curl and certificates via apt (up to a few minutes)
+ и нажмите «Играть» снова (докачается только недостающее).	 and press “Play” again (only what is missing will be downloaded).
+NeoForge выходит только для Minecraft 1.20.1 и новее. Для 	NeoForge is released only for Minecraft 1.20.1 and newer. For 
+[ZT] Служба не поднялась с первого раза, пробую ещё раз...	[ZT] The service did not start the first time, trying again...
+capes.dev просит подождать — слишком много запросов подряд	capes.dev asks to wait — too many requests in a row
+» создана — нажмите «Играть». Первый запуск скачает игру, 	” created — press “Play”. The first launch downloads the game, 
+» установлен. Он загрузится при следующем запуске сервера.	” installed. It will load on the next server start.
+Игра сейчас запускается или открыта — моды сборки заняты. 	The game is starting or open now — the build's mods are busy. 
+Например: вылетела при входе в мир, перед этим ставил моды	For example: crashed when entering a world, I had installed mods before that
+Не удалось создать окно игры — обновите драйвер видеокарты	Could not create the game window — update the graphics card driver
+Связь прервалась — переподключаюсь, скачанное не пропадёт…	The connection broke — reconnecting, what was downloaded is kept…
+или скачайте установщик с blauncher.ru и поставьте поверх.	or download the installer from blauncher.ru and install it over.
+Microsoft ответил неожидаемым образом — попробуйте ещё раз.	Microsoft answered unexpectedly — try again.
+Сервер не запущен — изменения идут через его консоль (RCON)	The server is not running — changes go through its console (RCON)
+не удалось скачать список версий NeoForge для 1.20.1: HTTP 	could not download the NeoForge version list for 1.20.1: HTTP 
+уберите свой путь к Java в настройках, лаунчер подберёт сам	remove your Java path in the settings, the launcher will pick one itself
+ МБ (остальное нужно системе и самой Java). Выберите меньше.	 MB (the rest is needed by the system and Java itself). Choose less.
+ запустится, когда вы закроете игру и снова нажмёте «Играть»	 will start when you close the game and press “Play” again
+# Создано BLauncher: ежедневный плановый перезапуск сервера 	# Created by BLauncher: daily scheduled server restart 
+. Попробуйте установить ZeroTier One вручную с zerotier.com.	. Try installing ZeroTier One manually from zerotier.com.
+sudo с паролем (пароль сохраняется зашифрованным на этом ПК)	sudo with password (the password is stored encrypted on this PC)
+Если «Память» в настройках больше половины ОЗУ, уменьшите её	If “Memory” in the settings is more than half of the RAM, reduce it
+Например: не грузился мир, пропали текстуры, не работал звук	For example: the world didn't load, textures vanished, no sound
+Сервер удалён из лаунчера, но ключ с VPS убрать не удалось (	The server was removed from the launcher, but the key could not be removed from the VPS (
+его можно удалить, когда убедитесь, что на VPS всё на месте.	it can be deleted once you are sure everything is in place on the VPS.
+посмотреть/изменить NBT-данные блока, сущности или хранилища	view/change the NBT data of a block, entity or storage
+ скачался с неверной контрольной суммой — повторите установку	 downloaded with a wrong checksum — repeat the installation
+) — друзья не смогут подключиться, пока правило не добавлено.	) — friends will not be able to connect until the rule is added.
+[LAUNCH] Офлайн-режим включён в настройках — запуск без сети.	[LAUNCH] Offline mode is on in the settings — starting without network.
+Брендовые плагины пока поддерживаются только для VPS-сервера.	Brand plugins are supported only for a VPS server so far.
+Не удалось открыть браузер. Инструкция: blauncher.ru/vps.html	Could not open the browser. Instructions: blauncher.ru/vps.html
+Не удалось скачать Rustcraft ни с blauncher.ru, ни с GitHub: 	Could not download Rustcraft from blauncher.ru or from GitHub: 
+Удалите этот файл, чтобы лаунчер снова создал сборку из неё.\n	Delete this file so the launcher creates a build from it again.\n
+ минут без вывода — скорее всего, не может скачать библиотеки.	 minutes without output — most likely it cannot download the libraries.
+В сборке не указана версия Minecraft (dependencies.minecraft).	The build does not state a Minecraft version (dependencies.minecraft).
+Скачанная Java не прошла проверку sha256 — повторите установку	The downloaded Java failed the sha256 check — repeat the installation
+Скачано — замените jar-файл вручную и перезапустите BLauncher.	Downloaded — replace the jar file manually and restart BLauncher.
+Файл ключа не распознан — нужен приватный ключ OpenSSH или PEM	Key file not recognised — an OpenSSH or PEM private key is needed
+ — файл повреждён или создан под другой учётной записью Windows	 — the file is damaged or was created under another Windows account
+[BLCORE] Значок выключен в настройках — BL Core не подключается	[BLCORE] The badge is off in the settings — BL Core is not connected
+[LAUNCH] WSL: отрисовка через видеокарту (GALLIUM_DRIVER=d3d12)	[LAUNCH] WSL: drawing through the graphics card (GALLIUM_DRIVER=d3d12)
+Без галочки Minecraft-сервер на VPS продолжит работать (служба 	Without the tick the Minecraft server on the VPS keeps running (service 
+Движок ZeroTier установлен, но не отвечает — нажмите «Обновить»	The ZeroTier engine is installed but not answering — press “Update”
+Сервер обновлений сообщил контрольную сумму в непонятном виде (	The update server reported the checksum in an unclear form (
+версия игры, язык игры (Java или Rust) и, для Rust, видеокарта.	the game version, the game language (Java or Rust) and, for Rust, the graphics card.
+, поэтому проверить скачанный файл нельзя. Обновление отменено —	, so the downloaded file cannot be checked. The update is cancelled —
+Java не смогла выделить память — уменьшите «Память» в настройках	Java could not allocate memory — reduce “Memory” in the settings
+Активация фирменных плагинов для серверов по SSH пока не готова.	Activating brand plugins for SSH servers is not ready yet.
+Большие модпаки на медленном интернете качаются несколько минут.	Big modpacks take several minutes to download on slow internet.
+Главный ключ не расшифровывается: файл секретов создан с другим 	The master key cannot be decrypted: the secrets file was created with another 
+Лаунчер удалит свой SSH-ключ с VPS и забудет сохранённые пароли.	The launcher will remove its SSH key from the VPS and forget the saved passwords.
+Полный перевод интерфейса применится после перезапуска BLauncher	The full interface translation applies after restarting BLauncher
+Расскажете, что случилось? Это поможет найти и исправить ошибку.	Tell us what happened? It helps us find and fix the error.
+перенесите его в папку с латинским именем, например C:\\BLauncher	move it to a folder with a Latin name, for example C:\\BLauncher
+: нет связи с Modrinth — проверьте интернет и нажмите «+» ещё раз	: no connection to Modrinth — check your internet and press “+” again
+Недопустимый ник: только латиница, цифры и _, от 3 до 16 символов	Invalid nickname: only Latin letters, digits and _, from 3 to 16 characters
+Minecraft уже запускается — окно появится через несколько секунд. 	Minecraft is already starting — the window will appear in a few seconds. 
+[FABRIC] meta.fabricmc.net не отвечает — беру сохранённый профиль 	[FABRIC] meta.fabricmc.net is not answering — taking the saved profile 
+[FORGE] Старый установщик — ставлю без него (install_profile.json)	[FORGE] Old installer — installing without it (install_profile.json)
+Не удалось установить Java для игры. Чаще всего мешает антивирус: 	Could not install Java for the game. Most often an antivirus is in the way: 
+Сервер сейчас не отвечает — игра всё равно попробует подключиться.	The server is not answering now — the game will try to connect anyway.
+Установите вручную: https://adoptium.net/ или https://bell-sw.com/	Install manually: https://adoptium.net/ or https://bell-sw.com/
+в системе уже установлена другая версия ZeroTier. Удалите её через	another ZeroTier version is already installed in the system. Remove it via
+ — память и порт освободятся для других серверов. Бэкапы останутся 	 — memory and port will be freed for other servers. Backups will stay 
+[ZT] ZeroTier установлен, но для работы нужна перезагрузка Windows.	[ZT] ZeroTier is installed, but Windows needs a restart for it to work.
+Запуск службы ZeroTier — подтвердите запрос администратора (UAC)...	Starting the ZeroTier service — confirm the administrator prompt (UAC)...
+Обнаружен конфликт модов — подробности в «Журнале игры» (Настройки)	Mod conflict found — details in the “Game log” (Settings)
+Установка ZeroTier One — подтвердите запрос администратора (UAC)...	Installing ZeroTier One — confirm the administrator prompt (UAC)...
+ на VPS уже занят другой программой. Выберите другой порт Minecraft.	 on the VPS is already taken by another program. Choose another Minecraft port.
+ID комнаты должен быть 16-значным числом (пример: a1b2c3d4e5f60718).	The room ID must be a 16-character number (example: a1b2c3d4e5f60718).
+Windows не нашла службу. Похоже, установка ZeroTier не завершилась —	Windows did not find the service. It looks like the ZeroTier installation did not finish —
+[JAVA] В папку лаунчера не дают записать Java (антивирус?) — пробую 	[JAVA] Java cannot be written to the launcher folder (antivirus?) — trying 
+[LOADER] Установщик не справился — убираю его файлы и пробую ещё раз	[LOADER] The installer failed — removing its files and trying again
+Без принятия EULA Minecraft сервер не запустится — отметьте галочку.	Without accepting the Minecraft EULA the server will not start — tick the box.
+Другие серверы на этом VPS останутся, SSH-ключ лаунчера на VPS тоже.	Other servers on this VPS stay, and so does the launcher's SSH key on the VPS.
+загрузчик просит именно эту версию — она лежит выключенной, включаем	the loader asks for exactly this version — it is turned off, turning it on
+ обрывается. Нажмите «Играть» ещё раз — докачается только недостающее	 keeps dropping. Press “Play” again — only what is missing will be downloaded
+ обязательных файлов — игра без них не запустится. Проверьте интернет	 required files — the game will not start without them. Check your internet
+ — лаунчер пока не умеет его ставить. Моды установятся, но загрузчик 	 — the launcher cannot install it yet. The mods will be installed, but the loader 
+Аккаунту нужна проверка возраста (adult verification). Пройдите её на	The account needs age verification (adult verification). Complete it at
+Выполнен вход через Microsoft, но лицензии Minecraft на аккаунте нет 	Signed in with Microsoft, but the account has no Minecraft licence 
+Менять списки можно, пока сервер работает (команды идут через RCON). 	The lists can be changed while the server is running (commands go through RCON). 
+Первый запуск обычно занимает 1–4 минуты, дальше игра стартует сразу.	The first launch usually takes 1–4 minutes, after that the game starts right away.
+установщик Windows сообщил о неустранимой ошибке. Чаще всего помогает	the Windows installer reported a fatal error. Most often it helps to
+Java не нашла файлы игры. Нажмите «Играть» ещё раз — лаунчер проверит 	Java did not find the game files. Press “Play” again — the launcher will check 
+Аккаунт заблокирован в Xbox Live за нарушение правил. Вход невозможен.	The account is banned from Xbox Live for breaking the rules. Login is impossible.
+На VPS не запущен systemd — без него сервер не сможет стартовать сам. 	systemd is not running on the VPS — without it the server cannot start by itself. 
+Фон — градиент. «Фон приложения» задаёт цвет, а ступени ниже — как он 	Background — a gradient. “App background” sets the colour, and the steps below set how it 
+подтверждение администратора не получено — нажмите «Да» в запросе UAC.	administrator confirmation not received — press “Yes” in the UAC prompt.
+установщик Windows не принял параметры запуска. Это не связано с UAC —	the Windows installer did not accept the launch parameters. This is not related to UAC —
+ уже отдан другому серверу на этом VPS. Выберите другой порт Minecraft.	 is already given to another server on this VPS. Choose another Minecraft port.
+[LAUNCH] WSL: драйвер d3d12 упал уже после закрытия игры — это не вылет	[LAUNCH] WSL: the d3d12 driver crashed after the game closed — this is not a crash
+[SERVER] Остановлен зависший процесс сервера от предыдущей сессии (PID 	[SERVER] Stopped a hung server process from the previous session (PID 
+[ZT] Устанавливаю ZeroTier — подтвердите запрос администратора (UAC)...	[ZT] Installing ZeroTier — confirm the administrator prompt (UAC)...
+» ещё не установлен Minecraft-сервер — установите его на экране сервера	” has no Minecraft server installed yet — install it on the server screen
+Пока не поддерживается для локального сервера — используйте VPS-сервер.	Not supported for a local server yet — use a VPS server.
+У этого аккаунта Microsoft нет профиля Xbox. Создайте его на xbox.com и	This Microsoft account has no Xbox profile. Create it at xbox.com and
+и докачает их. Не помогло и в пути к лаунчеру есть необычные символы — 	and fetch them. If that did not help and the launcher path has unusual characters — 
+Xbox Live требует подтвердить вход (многофакторная проверка). Войдите на	Xbox Live asks to confirm the login (multi-factor check). Sign in at
+[NEOFORGE] maven.neoforged.net не отвечает — беру с зеркала blauncher.ru	[NEOFORGE] maven.neoforged.net is not answering — taking it from the blauncher.ru mirror
+sudo на сервере требует пароль. Укажите пароль sudo в форме подключения.	sudo on the server asks for a password. Enter the sudo password in the connection form.
+Два мода конфликтуют: один и тот же мод лежит дважды или две библиотеки 	Two mods conflict: the same mod is there twice, or two libraries 
+Закройте браузер и тяжёлые программы или увеличьте файл подкачки Windows	Close the browser and heavy programs or increase the Windows page file
+На компьютере не установлен драйвер видеокарты — игру рисует процессор, 	No graphics card driver is installed on the computer — the processor draws the game, 
+Не удалось поставить python3 (нужен, чтобы VPS сам слал команды серверу)	Could not install python3 (needed for the VPS to send commands to the server itself)
+Обычно так бывает в контейнерах OpenVZ/LXC; нужен полноценный VPS (KVM).	This usually happens in OpenVZ/LXC containers; a full VPS (KVM) is needed.
+Пользователь не root, а sudo на сервере не установлен. Войдите под root.	The user is not root, and sudo is not installed on the server. Log in as root.
+Удалить и сам Minecraft-сервер с VPS: остановить, убрать службу и папку 	Also delete the Minecraft server itself from the VPS: stop it, remove the service and the folder 
+в системе уже идёт другая установка. Дождитесь её окончания и повторите.	another installation is already running in the system. Wait for it to finish and try again.
+не удалось включить автосохранение обратно — выполните save-on в консоли	could not turn auto-save back on — run save-on in the console
+установку запрещает политика Windows. Нужны права администратора машины.	installation is forbidden by Windows policy. Machine administrator rights are needed.
+ — запускается сама после перезагрузки VPS и перезапускается при падении.	 — starts by itself after a VPS reboot and restarts on crash.
+. Всё, что изменилось после этого, пропадёт. Перед откатом можно создать 	. Everything that changed after that will be lost. Before rolling back you can create 
+Папка сервера на VPS. Плагины — это .jar в папке plugins, моды — в mods; 	The server folder on the VPS. Plugins are .jar files in the plugins folder, mods — in mods; 
+Это детский аккаунт: его нужно добавить в семью на xbox.com, иначе вход в	This is a child account: it must be added to a family at xbox.com, otherwise login to
+запуск с правами администратора не состоялся. Нажмите «Да» в запросе UAC;	the launch with administrator rights did not happen. Press “Yes” in the UAC prompt;
+файл настроек испорчен (пустой или забит нулями) — мод создаст его заново	the settings file is broken (empty or filled with zeros) — the mod will create it again
+файл установщика повреждён. Он будет скачан заново при следующей попытке.	the installer file is damaged. It will be downloaded again on the next attempt.
+ если запроса не было — возможно, его заблокировал антивирус или политика.	 if there was no prompt — perhaps an antivirus or a policy blocked it.
+Аукцион между игроками, NPC-скупщик, NPC-торговец и зарплата для BLauncher	Auction between players, NPC buyer, NPC trader and salary for BLauncher
+Каталог модов понимает только английские названия — попробуйте, например, 	The mod catalogue understands only English names — try, for example, 
+запуск с правами администратора не состоялся — нажмите «Да» в запросе UAC.	the launch with administrator rights did not happen — press “Yes” in the UAC prompt.
+ перезагрузка, а если нет — установите ZeroTier One вручную с zerotier.com.	 a restart, and if not — install ZeroTier One manually from zerotier.com.
+ установите ZeroTier One вручную с zerotier.com и нажмите «Включить» снова.	 install ZeroTier One manually from zerotier.com and press “Turn on” again.
+). Его можно удалить вручную из ~/.ssh/authorized_keys — строка с подписью 	). It can be removed manually from ~/.ssh/authorized_keys — the line signed 
+RCON не принял пароль — сохранённый пароль не совпадает с server.properties	RCON did not accept the password — the saved password does not match server.properties
+Xbox Live недоступен в стране этого аккаунта. Профиль Xbox тут не поможет —	Xbox Live is unavailable in this account's country. An Xbox profile will not help here —
+Игру уронил драйвер видеокарты — обновите его с сайта AMD, NVIDIA или Intel	The graphics card driver crashed the game — update it from the AMD, NVIDIA or Intel site
+Копия всей папки сервера (мир, настройки, моды, плагины) хранится на VPS в 	A copy of the whole server folder (world, settings, mods, plugins) is kept on the VPS in 
+Не пишите ник, почту и другие личные данные: вместе с ответом уйдут только 	Don't write your nickname, email or other personal data: only these go with the answer — 
+Переедут миры, настройки, плагины и моды. Сервер на ПК останется как был — 	Worlds, settings, plugins and mods will move. The server on the PC stays as it was — 
+Rust вылетел: на компьютере не установлен драйвер видеокарты, и игру рисует 	Rust crashed: no graphics card driver is installed on the computer, and the game is drawn by 
+сервером Minecraft. Остановите её или укажите для этого сервера другой порт.	Minecraft server. Stop it or set another port for this server.
+ Если установка только что прошла — перезагрузите Windows и попробуйте снова.	 If the installation just finished — restart Windows and try again.
+Если закрыть лаунчер сейчас, загрузка прервётся. Уже скачанное не пропадёт — 	If you close the launcher now, the download will stop. What was downloaded is kept — 
+Скачиваю архив сборки — после этого покажу, что в ней, и спрошу, ставить ли. 	Downloading the build archive — then I'll show what's inside and ask whether to install it. 
+пользователя minecraft (не от root) и сам запускаться после перезагрузки VPS.	the minecraft user (not root) and start by itself after a VPS reboot.
+BLauncher уже запущен.\nОткройте существующее окно — второй экземпляр не нужен.	BLauncher is already running.\nOpen the existing window — a second copy is not needed.
+[SETTINGS] Анонимная статистика выключена — лаунчер больше не сообщает о себе.	[SETTINGS] Anonymous statistics off — the launcher no longer reports about itself.
+Окно игры может быть за лаунчером или свёрнуто — посмотрите на панели задач.\n\n	The game window may be behind the launcher or minimised — look at the taskbar.\n\n
+Фон — один цвет: «Фон приложения» заливает всё окно, градиент не используется.	Background — one colour: “App background” fills the whole window, the gradient is not used.
+Для сервера по SSH загрузите .jar плагина в папку plugins через панель «Файлы».	For an SSH server, upload the plugin .jar into the plugins folder via the “Files” panel.
+Испорчен файл настроек мода (.toml) — так бывает после нехватки места на диске 	A mod settings file (.toml) is broken — this happens after running out of disk space 
+Моды несовместимы с этой версией игры или друг с другом — подробности в журнале	The mods are incompatible with this game version or with each other — details in the log
+На диске закончилось место — освободите несколько гигабайт (Корзина, Загрузки) 	The disk is out of space — free a few gigabytes (Recycle Bin, Downloads) 
+Игра вылетела. Лаунчер прочитал журнал и моды сборки — вот что, похоже, мешает. 	The game crashed. The launcher read the log and the build's mods — this is what seems to be in the way. 
+Игре не хватило памяти — увеличьте «Память» в настройках или уберите часть модов	The game ran out of memory — increase “Memory” in the settings or remove some mods
+Ключ добавлен в authorized_keys, но сервер по нему не пускает. Проверьте, что в 	The key was added to authorized_keys, but the server does not let it in. Check that 
+Не удалось загрузить список с Modrinth — проверьте интернет и попробуйте ещё раз	Could not load the list from Modrinth — check your internet and try again
+управляет видеокартой. Без неё видеокарта не работает, и игру рисует процессор: 	controls the graphics card. Without it the graphics card does not work, and the processor draws the game: 
+• Параметры Windows → «Центр обновления Windows» → «Дополнительные параметры» → 	• Windows Settings → “Windows Update” → “Advanced options” → 
+ — Java может не найти файлы игры. Перенесите лаунчер в папку с латинским именем.	 — Java may not find the game files. Move the launcher to a folder with a Latin name.
+if [ $rc -gt 1 ]; then rm -f "$BK/$NAME.part"; echo "tar: код $rc"; exit $rc; fi\n	if [ $rc -gt 1 ]; then rm -f "$BK/$NAME.part"; echo "tar: code $rc"; exit $rc; fi\n
+На компьютере не установлен драйвер видеокарты, а без него Rust сильно тормозит. 	No graphics card driver is installed on the computer, and without it Rust is very slow. 
+Нет доступа к файлам игры — возможно, их держит антивирус или вторая копия игры. 	No access to the game files — perhaps an antivirus or a second copy of the game holds them. 
+# Настройки записаны BLauncher; менять можно, лаунчер трогает только порты и RCON\n	# Settings written by BLauncher; you can change them, the launcher only touches ports and RCON\n
+Rustcraft (язык игры Rust) не запустился на этом компьютере — это пробный движок. 	Rustcraft (the Rust game language) did not start on this computer — it is an experimental engine. 
+Без принятия EULA сервер Minecraft не запускается. Лаунчер не отмечает это за вас.	Without accepting the EULA the Minecraft server does not start. The launcher does not tick it for you.
+Игра упала с отчётом об ошибке — чаще всего из-за мода. Подробности в журнале игры	The game crashed with an error report — most often because of a mod. Details in the game log
+Лаунчер поставит Java, ядро и службу systemd. Сервер будет работать от отдельного 	The launcher will install Java, the core and a systemd service. The server will run as a separate 
+На компьютере не установлен драйвер видеокарты — программа, через которую Windows 	No graphics card driver is installed on the computer — the program through which Windows 
+• NVIDIA: откройте программу «NVIDIA App» или «GeForce Experience» → «Драйверы» → 	• NVIDIA: open the “NVIDIA App” or “GeForce Experience” → “Drivers” → 
+\n\nТак бывает, если вы переустановили систему на VPS. Если вы ничего не меняли — не 	\n\nThis happens if you reinstalled the system on the VPS. If you changed nothing — don't 
+. Так бывает после переустановки системы на VPS — или если кто-то подменяет сервер.	. This happens after reinstalling the system on the VPS — or if someone is impersonating the server.
+Найдена папка с модами — создана сборка. Проверьте версию и загрузчик в «Изменить».	A mods folder was found — a build was created. Check the version and the loader in “Edit”.
+Сервер будет остановлен, а вся его папка (мир, настройки, моды) заменена копией от 	The server will be stopped, and its whole folder (world, settings, mods) replaced with a copy from 
+• AMD: откройте «AMD Software: Adrenalin Edition» → «Проверить наличие обновлений».	• AMD: open “AMD Software: Adrenalin Edition” → “Check for updates”.
+\n\nЛаунчер запомнит его и будет предупреждать, если он изменится. Проверить, что это 	\n\nThe launcher will remember it and warn you if it changes. To check that this is 
+[JAVA] Для Rustcraft нужна Java 25 с компилятором (jdk.compiler) — скачиваю один раз	[JAVA] Rustcraft needs Java 25 with the compiler (jdk.compiler) — downloading once
+ufw не установлен — если у хостера есть свой брандмауэр, откройте в его панели порт 	ufw is not installed — if the host has its own firewall, open the port in its panel 
+У вас две видеокарты (так обычно у ноутбуков). На таких компьютерах проблемы бывают 	You have two graphics cards (laptops usually do). On such computers problems happen 
+Часть файлов игры или мод скачались повреждёнными — удалите недавно добавленный мод 	Some game files or a mod downloaded damaged — remove the recently added mod 
+Что нашлось в модах сборки. Выключенные моды не удаляются: им добавляется .disabled.	What was found in the build's mods. Turned-off mods are not deleted: they get .disabled.
+и намного сильнее зависит от драйвера видеокарты — программы, через которую Windows 	and depends much more on the graphics card driver — the program through which Windows 
+[SETTINGS] Офлайн-режим включён — запуск всегда без сети, даже при выполненном входе.	[SETTINGS] Offline mode on — always starting without network, even when signed in.
+Выключенные моды не удаляются: им добавляется .disabled, вернуть можно в окне сборки.	Turned-off mods are not deleted: they get .disabled, you can bring them back in the build window.
+Если драйвер старый, бывает так: игра вылетает, мир тёмный или серый, картинка рябит 	If the driver is old, this can happen: the game crashes, the world is dark or grey, the picture ripples 
+Игра остановилась из-за своей ошибки — обычно это мод, который не подходит к версии. 	The game stopped because of its own error — usually a mod that does not fit the version. 
+повторяют друг друга. Уберите дубли и недавно добавленные моды — имена есть в журнале	duplicate each other. Remove duplicates and recently added mods — the names are in the log
+подключайтесь: возможно, кто-то подменяет сервер.\n\nПроверить новый отпечаток можно в 	connect: someone may be impersonating the server.\n\nYou can check the new fingerprint in 
+«Необязательные обновления» → «Обновления драйверов» (кнопка ниже открывает это окно).	“Optional updates” → “Driver updates” (the button below opens this window).
+# EULA Minecraft (https://aka.ms/MinecraftEULA) принята владельцем сервера в BLauncher 	# Minecraft EULA (https://aka.ms/MinecraftEULA) accepted by the server owner in BLauncher 
+или выключения компьютера во время игры. «Починка сборки» уберёт его, мод создаст новый	or the computer was turned off during the game. “Fix build” will remove it, the mod will create a new one
+3. Не помогло — выберите «Язык игры: Java». Обычная версия работает на любой видеокарте.	3. Didn't help — choose “Game language: Java”. The regular version works on any graphics card.
+Ключ этого сервера не найден на этом ПК — удалите сервер из лаунчера и подключите заново	This server's key was not found on this PC — remove the server from the launcher and connect it again
+Компьютеру не хватило оперативной памяти — закройте браузер и другие тяжёлые программы. 	The computer ran out of RAM — close the browser and other heavy programs. 
+На самых новых версиях Minecraft многие моды ещё не готовы: попробуйте «Починку сборки» 	On the newest Minecraft versions many mods are not ready yet: try “Fix build” 
+Rust из-за этого запускается минутами и сильно тормозит, обычная версия тоже медленнее.\n\n	because of this Rust takes minutes to start and is very slow, the regular version is slower too.\n\n
+Нет интернета или DNS не находит адрес — проверьте подключение и нажмите «Играть» ещё раз	No internet or DNS cannot find the address — check the connection and press “Play” again
+. Проверьте интернет, VPN или антивирус и нажмите «Играть» ещё раз — скачанное не пропадёт	. Check your internet, VPN or antivirus and press “Play” again — what was downloaded is kept
+Делает сам VPS — работает, даже когда ваш ПК выключен. Ручные бэкапы при этом не удаляются.	Done by the VPS itself — works even when your PC is off. Manual backups are not deleted.
+Пароль нужен один раз: дальше лаунчер входит по своему SSH-ключу, зашифрованному на этом ПК.	The password is needed once: after that the launcher logs in with its own SSH key, encrypted on this PC.
+Вторая копия игры займёт ещё столько же памяти — запускайте её, только если она правда нужна.	A second copy of the game takes as much memory again — start it only if you really need it.
+Игре не хватает файлов — проверьте моды на совместимость с версией и нажмите «Играть» ещё раз	The game is missing files — check the mods for compatibility with the version and press “Play” again
+Игроки увидят предупреждение в чате за 60, 30, 10 и 5 секунд. Отменить можно этой же кнопкой.	Players will see a warning in chat at 60, 30, 10 and 5 seconds. The same button cancels it.
+поэтому Rust может тормозить и вылетать. Если вылетит, лаунчер сам переключит на обычную Java	so Rust may be slow and crash. If it crashes, the launcher will switch to regular Java itself
+Rust — новый способ запуска Minecraft. Он рисует игру по-другому, чем обычная версия на Java, 	Rust is a new way to run Minecraft. It draws the game differently from the regular Java version, 
+Привилегии/ранги по кодам активации — общий язык (пермишены) с остальной экосистемой BLauncher	Privileges/ranks via activation codes — a shared language (permissions) with the rest of the BLauncher ecosystem
+или оверлеи (Discord, MSI Afterburner, запись экрана) — обновите драйвер или отключите оверлеи	or overlays (Discord, MSI Afterburner, screen recording) — update the driver or turn off the overlays
+if [ "$FREE" -lt $((SIZE + 262144)) ]; then echo "мало места: свободно ${FREE} КБ"; exit 1; fi\n	if [ "$FREE" -lt $((SIZE + 262144)) ]; then echo "low space: ${FREE} KB free"; exit 1; fi\n
+или Debian 12 и новее. Переустановите систему на VPS через панель хостера и подключитесь снова.	or Debian 12 and newer. Reinstall the system on the VPS via the host's panel and connect again.
+# Создано BLauncher: порт RCON — только для 127.0.0.1 (лаунчер ходит в него через SSH-туннель).\n	# Created by BLauncher: the RCON port is only for 127.0.0.1 (the launcher reaches it through an SSH tunnel).\n
+У пользователя нет прав sudo. Войдите под root или выдайте права: usermod -aG sudo <пользователь>	The user has no sudo rights. Log in as root or grant the rights: usermod -aG sudo <user>
+лаунчера — чаще всего его держит антивирус. Перезагрузите компьютер и нажмите «Обновить» ещё раз 	the launcher — most often an antivirus holds it. Restart the computer and press “Update” again 
+[ZT] Не удалось автоматически одобрить вход (если комната приватная, одобрите его в списке комнат).	[ZT] Could not approve joining automatically (if the room is private, approve it in the room list).
+/opt/blauncher/backups. Пока сервер работает, бэкап делается с паузой автосохранения, без остановки.	/opt/blauncher/backups. While the server runs, the backup is made with auto-save paused, without stopping.
+\nСервер сейчас запущен на ПК — остановите его перед переносом, иначе мир может перенестись не целиком.	\nThe server is running on the PC now — stop it before moving, otherwise the world may not move completely.
+Java не приняла параметры запуска — проверьте «Свои аргументы Java» в настройках и в настройках сборки	Java did not accept the launch parameters — check “Custom Java arguments” in the settings and in the build settings
+Сначала добавьте VPS: «Новый сервер» → «VPS». Потом откройте его — там будет вкладка «Перенести с ПК».	Add a VPS first: “New server” → “VPS”. Then open it — there will be a “Move from PC” tab.
+добавьте папку лаунчера в исключения или ненадолго отключите проверку загрузок и нажмите «Играть» ещё раз	add the launcher folder to the exclusions or briefly turn off download scanning and press “Play” again
+Останавливает сервер (если запущен) и ставит выбранную версию/загрузчик поверх — текущий мир будет потерян.	Stops the server (if running) and installs the chosen version/loader over it — the current world will be lost.
+Java не запустилась — возможно, повреждена. Удалите папку java-runtime в папке лаунчера, она скачается заново	Java did not start — it may be damaged. Delete the java-runtime folder in the launcher folder, it will be downloaded again
+say() { for i in 1 2 3; do rcon "say $1" 2>/dev/null && return 0; sleep 5; done; echo "не отправлено: $1"; }\n	say() { for i in 1 2 3; do rcon "say $1" 2>/dev/null && return 0; sleep 5; done; echo "not sent: $1"; }\n
+игра не смогла прочитать этот файл настроек — мод создаст его заново, старый останется рядом с припиской .broken	the game could not read this settings file — the mod will create it again, the old one stays next to it with .broken added
+Карточка появится в списке «Мои серверы» — запускать и останавливать можно прямо оттуда, независимо от других серверов.	The card will appear in the “My servers” list — you can start and stop it right there, independently of other servers.
+Арендуйте VPS у любого хостера с Ubuntu 22.04+ или Debian 12+ и введите данные доступа из письма хостера. Дальше лаунчер всё поставит сам.	Rent a VPS from any host with Ubuntu 22.04+ or Debian 12+ and enter the access details from the host's email. The launcher will set up everything else.
+Minecraft загружается…	Minecraft is loading…
+Minecraft ещё загружается — прошло 	Minecraft is still loading — 
+ с. С модами и при первом запуске это занимает до нескольких минут, окно игры появится само. Если за 5 минут оно так и не появится, нажмите «Остановить» и запустите заново	 s so far. With mods and on the first launch this takes up to several minutes, the game window will appear by itself. If it does not appear within 5 minutes, press “Stop” and launch again
+Игра остановлена	Game stopped
+Следующий запуск оставит Windows больше памяти. 	The next launch will leave Windows more memory. 
+, а скачать его негде	, and there is nowhere to download it
+ — выключить, чтобы игра запустилась	 — turn it off so the game can start
+, а он выключается тоже	, and it is being turned off too
+Дальность симуляции уменьшена с 	Simulation distance lowered from 
+ до 16: с большей мир на Rust часто не загружается. Дальность прорисовки не менялась	 to 16: with more, the world in Rust often does not load. Render distance was not changed
+Устанавливаю обновление 	Installing update 
+ — лаунчер перезапустится через несколько секунд	 — the launcher will restart in a few seconds
+Первый запуск Rust: готовлю данные игры. Несколько минут и только один раз — компьютер может тормозить	First Rust launch: preparing the game data. A few minutes, only once — the computer may slow down
+Подготовка Rust прервалась. Нажмите «Играть» ещё раз и подождите несколько минут — окно игры появится само. Если компьютер сильно тормозит, закройте браузер	Rust preparation was interrupted. Press “Play” again and wait a few minutes — the game window will appear by itself. If the computer is very slow, close the browser
+Первый запуск Rust: готовлю данные игры — прошло 	First Rust launch: preparing game data — 
+ с. Это один раз, окно игры появится само. Если остановить, подготовка начнётся сначала	 s so far. This happens once, the game window will appear by itself. If you stop it, the preparation starts over
+Подготовка Rust остановлена. При следующем запуске она начнётся сначала	Rust preparation stopped. It will start over on the next launch

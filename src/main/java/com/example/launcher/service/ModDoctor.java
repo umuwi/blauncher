@@ -415,6 +415,7 @@ public class ModDoctor {
             if (pid == null) {
                 out.add(new Fix(Kind.INSTALL, e.getKey(), "нужен для " + e.getValue() + ", но на Modrinth под "
                         + loader + " " + mcVersion + " не найден — поставьте вручную", null, null, null, false));
+                disableDependents(e.getKey(), e.getKey(), active, disables);
                 continue;
             }
             if (!presentProjects.contains(pid)) { missingProjects.putIfAbsent(pid, e.getValue()); fromModrinthOnly.remove(pid); }
@@ -446,6 +447,8 @@ public class ModDoctor {
                 if (best == null) {
                     out.add(new Fix(Kind.INSTALL, title, "нужен для " + e.getValue() + ", но под " + loader + " "
                             + mcVersion + " его нет", null, e.getKey(), null, false));
+                    String id = idOfProject.get(e.getKey());
+                    if (id != null && !lookupFailed.contains(e.getKey())) disableDependents(id, title, active, disables);
                 } else {
                     installs.put(e.getKey(), new Fix(Kind.INSTALL, title, sure ? "нужен для " + e.getValue()
                             : "на Modrinth указан обязательным для " + e.getValue() + " (в самом моде не прописан)",
@@ -1096,7 +1099,10 @@ public class ModDoctor {
                 if (p == null) continue;
                 String pid = str(p, "id");
                 if (bestVersion(pid, mc, loader) != null) return pid;
-            } catch (Exception ignored) { }
+                if (lookupFailed.contains(pid)) resolveFailed.add(modId);
+            } catch (Exception ignored) {
+                resolveFailed.add(modId);
+            }
         }
         // Поиском: берём попадание, чьё имя или slug совпадает с id без разделителей.
         try {
@@ -1104,8 +1110,44 @@ public class ModDoctor {
             for (ModInfo hit : modrinth.search(modId.replace('_', ' '), mc, loader, "mod", 10)) {
                 if (want.equals(norm(hit.getSlug())) || want.equals(norm(hit.getTitle()))) return hit.getProjectId();
             }
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {
+            resolveFailed.add(modId);
+        }
         return null;
+    }
+
+    /** id, про которые Modrinth не ответил в {@link #resolveProject}: «его нет» про них не утверждаем. */
+    private final Set<String> resolveFailed = new HashSet<>();
+
+    /**
+     * Моды сборки, которым нужен недоступный мод (на Modrinth его нет), — выключить: без него
+     * загрузчик не пустит игру вовсе. 03.11.2026 cf836c6c поставил модпак Prominence 2 (Fabric,
+     * 562 файла): FTB Quests / FTB Library есть только на CurseForge, в .mrpack их нет, а дополнения
+     * к ним — есть. «Починка» советовала «поставьте вручную» без галочки, игрок 25 раз нажал
+     * «Играть» за час. Без пары модов-дополнений модпак хотя бы запускается.
+     */
+    private void disableDependents(String missingId, String title, List<JarMeta> active, Map<Path, Fix> disables) {
+        boolean sure = !resolveFailed.contains(missingId);
+        // Цепочкой: мод, которому нужен только что выключенный, тоже не загрузится — иначе следующая
+        // «Починка» предложила бы скачать выключенный обратно, и всё пошло бы по кругу.
+        Deque<String[]> queue = new ArrayDeque<>();
+        queue.add(new String[]{missingId, title});
+        while (!queue.isEmpty()) {
+            String[] want = queue.poll();
+            for (JarMeta j : active) {
+                if (disables.containsKey(j.file)) continue;
+                boolean needs = false;
+                for (String dep : j.requires.keySet()) {
+                    if (dep.equals(want[0]) || canonicalId(dep).equals(want[0])) { needs = true; break; }
+                }
+                if (!needs) continue;
+                String why = want[0].equals(missingId) ? ", а скачать его негде" : ", а он выключается тоже";
+                disables.put(j.file, new Fix(Kind.DISABLE, j.display(), "ему нужен " + want[1] + why
+                        + (sure ? "" : " (Modrinth не ответил — проверьте позже)")
+                        + " — выключить, чтобы игра запустилась", j.file, null, null, sure));
+                for (String id : j.ids) queue.add(new String[]{id, j.display()});
+            }
+        }
     }
 
     private final Map<String, Optional<String>> bestCache = new HashMap<>();

@@ -560,12 +560,45 @@ public class UpdateService {
         System.arraycopy(body, 0, withBom, 2, body.length);
         Files.write(vbsPath, withBom);
 
+        Path lock = scriptPath.resolveSibling(scriptPath.getFileName() + ".lock");
+        try { Files.deleteIfExists(lock); } catch (IOException ignored) { }
         ProcessBuilder pb = new ProcessBuilder("wscript.exe", "//B", vbsPath.toString());
         pb.directory(scriptPath.getParent().toFile());
         // Detached — this process must keep running after the launcher's own JVM exits, exactly
         // like the existing pattern for the dedicated server / playit.gg agent elsewhere in this
         // codebase (GameLaunchService/PlayitService both spawn independent OS processes the same way).
-        pb.start();
+        try {
+            pb.start();
+        } catch (IOException noWscript) {
+            // wscript.exe нет совсем — ниже сработает запасной путь.
+        }
+        if (failMarker == null) return;
+
+        // 31.10.2026 (8179990b): десять обновлений подряд с trace=none — скрипт не написал даже
+        // первую букву, то есть wscript его не запустил (антивирус не даёт запускать .vbs из
+        // временной папки или в Windows отключён Windows Script Host). Скрипт пишет «s» первой же
+        // строкой, поэтому ждём её до 3 секунд, а не дождались — запускаем .bat сами, через
+        // свёрнутое окно cmd: оно мелькнёт в панели задач, зато обновление встанет. Если wscript
+        // всё же проснётся позже, второй экземпляр скрипта выйдет на mkdir-замке в его начале.
+        Path trace = failMarker.toAbsolutePath().resolveSibling(UPDATE_TRACE_FILE);
+        for (int i = 0; i < 30 && !Files.exists(trace); i++) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        if (Files.exists(trace)) return;
+        try { Files.deleteIfExists(vbsPath); } catch (IOException ignored) { }
+        // «w» — след для статистики: скрипт запущен в обход wscript (reportPreviousUpdate).
+        try { Files.writeString(trace, "w\r\n"); } catch (IOException ignored) { }
+        // «cmd /c» внутри start, а не сам .bat: start открывает .bat через «cmd /K», и окно
+        // оставалось бы висеть в панели задач после конца скрипта.
+        new ProcessBuilder("cmd.exe", "/c", "start", "\"\"", "/min", "cmd.exe", "/c",
+                scriptPath.toAbsolutePath().toString())
+                .directory(scriptPath.getParent().toFile())
+                .start();
     }
 
     /**
@@ -625,8 +658,11 @@ public class UpdateService {
         java.util.function.Function<String, String> step = s -> trace == null ? ""
                 : "echo " + s + ">> \"" + trace + "\"\r\n";
         String wait = "timeout /t 1 /nobreak > nul 2>&1 || ping -n 2 127.0.0.1 > nul\r\n";
+        // Замок от второго экземпляра: см. запасной запуск в startSelfReplace. mkdir атомарен —
+        // из двух скриптов папку создаст только один, второй сразу выходит.
         return "@echo off\r\n"
                 + "chcp 65001 > nul\r\n"
+                + "mkdir \"%~f0.lock\" > nul 2>&1 || exit /b\r\n"
                 + "setlocal enabledelayedexpansion\r\n"
                 + step.apply("s")
                 + "set attempts=0\r\n"
@@ -676,6 +712,7 @@ public class UpdateService {
                 + (relaunch ? "start \"\" /D \"" + exeDir + "\" \"" + exe + "\"\r\n" : "")
                 + ":cleanup\r\n"
                 + "del \"" + downloaded + "\" > nul 2>&1\r\n"
+                + "rmdir \"%~f0.lock\" > nul 2>&1\r\n"
                 + "(goto) 2>nul & del \"%~f0\"\r\n";
     }
 }

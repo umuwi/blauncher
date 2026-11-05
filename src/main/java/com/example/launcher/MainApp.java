@@ -49,10 +49,20 @@ public class MainApp extends Application {
         loadBundledFonts();
 
         Path configPath = Path.of("config", "launcher.json");
+        boolean firstRun = !java.nio.file.Files.exists(configPath);
         ConfigService configService = new ConfigService(configPath);
         this.config = configService.loadConfig();
+        // Язык при первом запуске — по языку Windows (02.11.2026, просьба владельца): русский для
+        // русского и соседних языков, у кого русский обычно второй, иначе английский. Потом его
+        // меняют в настройках, и выбор не трогаем.
+        if (firstRun) {
+            config.setLanguage(autoLanguage(java.util.Locale.getDefault().getLanguage()));
+            try { configService.saveConfig(config); } catch (Exception ignored) { }
+        }
 
         Path gameDir = Path.of(config.getGameDirectory()).toAbsolutePath().normalize();
+        // Сразу: ошибка в самом запуске тоже должна попасть в журнал (см. ErrorLog).
+        com.example.launcher.service.ErrorLog.install(gameDir.resolve("logs"));
 
         // Single instance: hold a lock file so a second BLauncher refuses to start and tells the
         // player it is already running. Two instances would both poll ZeroTier and both try to
@@ -60,6 +70,11 @@ public class MainApp extends Application {
         // the first one's server process (measured: two BLauncher.exe instances on this machine
         // during development produced exactly that confusion).
         if (!acquireSingleInstanceLock(gameDir)) {
+            // Первый лаунчер может быть спрятан, пока идёт игра на Rust, — тогда просто показать его.
+            if (MainController.askHiddenLauncherToShow(gameDir)) {
+                javafx.application.Platform.exit();
+                return;
+            }
             showAlreadyRunning(primaryStage);
             return;
         }
@@ -88,6 +103,10 @@ public class MainApp extends Application {
         double startHeight = 700;
         primaryStage.setMinWidth(startWidth);
         primaryStage.setMinHeight(startHeight);
+        // Английский для текста из кода (подсказки, окна, статусы) — см. UiTranslator. Ставится до
+        // первого окна, чтобы и оно, и все следующие (диалоги, всплывающие меню) переводились сразу.
+        com.example.launcher.ui.UiTranslator.setEnglish("en".equals(config.getLanguage()));
+        com.example.launcher.ui.UiTranslator.install();
         Scene scene = new Scene(root, startWidth, startHeight);
         // No stylesheet here on purpose: the theme is generated from the saved palette
         // (PaletteService) and applied by MainController.init(), which runs before the
@@ -104,6 +123,19 @@ public class MainApp extends Application {
                 modLoaderService, modrinthService, javaVersionDetector, javaDownloadService,
                 serverService, gameDir, primaryStage);
 
+        Runnable exitLauncher = () -> {
+            // A dedicated server / playit.gg agent are spawned via ProcessBuilder as independent
+            // OS processes - exiting this JVM does NOT kill them on Windows, so without this
+            // they'd keep running invisibly (and pile up across launcher restarts) every time
+            // the player closes BLauncher while either is still up.
+            // Каждый шаг отдельно: 03.11.2026 после тихого обновления 49 раз из 119 следующий запуск
+            // был на старой версии, а отметок о сбое пришло 6 — ошибка в любом шаге до установки
+            // молча пропускала её. Установка обновления должна дойти до дела всегда.
+            try { controller.reportCloseIfInGame(); } catch (Throwable ignored) { }   // до shutdown: он останавливает статистику
+            try { controller.shutdownBackgroundProcesses(); } catch (Throwable ignored) { }
+            try { controller.applyStagedUpdateOnExit(); } catch (Throwable ignored) { }   // тихое обновление — после всего остального
+            System.exit(0);
+        };
         primaryStage.setOnCloseRequest(e -> {
             // Идёт первая загрузка или установка загрузчика — переспросить (13.10.2026: трое
             // новичков закрыли окно посреди загрузки и до игры так и не дошли).
@@ -111,14 +143,12 @@ public class MainApp extends Application {
                 e.consume();
                 return;
             }
-            // A dedicated server / playit.gg agent are spawned via ProcessBuilder as independent
-            // OS processes - exiting this JVM does NOT kill them on Windows, so without this
-            // they'd keep running invisibly (and pile up across launcher restarts) every time
-            // the player closes BLauncher while either is still up.
-            controller.reportCloseIfInGame();   // до shutdown: он останавливает статистику
-            controller.shutdownBackgroundProcesses();
-            controller.applyStagedUpdateOnExit();   // тихое обновление — после всего остального
-            System.exit(0);
+            // Идёт игра на Rust — окно прячем, а выходим, когда она закроется (без лаунчера она падает).
+            if (controller.hideWhileRustRuns(exitLauncher)) {
+                e.consume();
+                return;
+            }
+            exitLauncher.run();
         });
         primaryStage.show();
     }
@@ -180,6 +210,13 @@ public class MainApp extends Application {
             }
         }
         System.out.println("[fonts] загружено начертаний: " + loaded + " из " + fonts.length);
+    }
+
+    /** «ru» для русского и языков, у кого русский обычно второй (uk, be, kk, …), иначе «en». */
+    static String autoLanguage(String systemLanguage) {
+        String l = systemLanguage == null ? "" : systemLanguage.toLowerCase(java.util.Locale.ROOT);
+        return java.util.Set.of("ru", "uk", "be", "kk", "ky", "uz", "tg", "tk", "hy", "az", "ka", "mn", "")
+                .contains(l) ? "ru" : "en";
     }
 
     public static void main(String[] args) {

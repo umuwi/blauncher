@@ -90,6 +90,11 @@ public class Profile {
     public String getBuildServer() { return buildServer == null ? "" : buildServer; }
     public void setBuildServer(String v) { this.buildServer = v == null ? "" : v.trim(); }
 
+    /** Модпак Modrinth, из которого сделана сборка (его slug), — для отметки вылета (01.11.2026); пусто — не из каталога. */
+    private String modpackSlug;
+    public String getModpackSlug() { return modpackSlug == null ? "" : modpackSlug; }
+    public void setModpackSlug(String v) { this.modpackSlug = v == null ? "" : v.trim(); }
+
     public String getName() {
         return name;
     }

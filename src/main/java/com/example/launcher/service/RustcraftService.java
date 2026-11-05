@@ -186,6 +186,70 @@ public class RustcraftService {
     }
 
     /**
+     * Дальность прорисовки Rust не больше {@code max} (01.11.2026: видеокарте не хватало памяти при 32).
+     * Правит options.txt игры: renderDistance, simulationDistance и blauncherRenderDistance (дальность
+     * больше 32 для дальней поверхности). Возвращает прежнюю дальность, если её пришлось уменьшить, иначе 0.
+     */
+    public static int lowerRenderDistance(Path gameDir, int max) {
+        Path file = gameDir.resolve("options.txt");
+        try {
+            List<String> lines = new java.util.ArrayList<>(Files.readAllLines(file, java.nio.charset.StandardCharsets.ISO_8859_1));
+            // Для сообщения игроку — обычная дальность («с 32 до 12»), а не дальняя поверхность
+            // (blauncherRenderDistance до 96): она в настройках игры не видна как «дальность».
+            int was = 0, wasFar = 0;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                int c = line.indexOf(':');
+                if (c <= 0) continue;
+                String key = line.substring(0, c);
+                if (!key.equals("renderDistance") && !key.equals("blauncherRenderDistance") && !key.equals("simulationDistance")) continue;
+                int v;
+                try { v = Integer.parseInt(line.substring(c + 1).trim()); } catch (NumberFormatException e) { continue; }
+                if (v <= max) continue;
+                if (key.equals("renderDistance")) was = v;
+                else if (key.equals("blauncherRenderDistance")) wasFar = v;
+                lines.set(i, key + ":" + max);
+            }
+            if (was == 0) was = wasFar;
+            if (was == 0) return 0;
+            // Как было в файле — по строке на «\n»: игра на Rust читает его сама.
+            Files.write(file, (String.join("\n", lines) + "\n").getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            return was;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Дальность симуляции Rust не больше {@code max}; возвращает прежнюю, если пришлось уменьшить, иначе 0.
+     * 03.11.2026: «не грузился мир» у 3617cd3f (RX 6600, симуляция 32 — 4225 чанков считает процессор).
+     * С 01.11 при прорисовке и симуляции 32 игра на Rust закончилась не нулём в 29 запусках из 74,
+     * при прорисовке 32 и симуляции 12 — в 9 из 42, при 16–20 вылетов почти нет. Прорисовку не трогаем.
+     */
+    public static int capSimulationDistance(Path gameDir, int max) {
+        Path file = gameDir.resolve("options.txt");
+        try {
+            if (!Files.isRegularFile(file)) return 0;
+            List<String> lines = new java.util.ArrayList<>(Files.readAllLines(file, java.nio.charset.StandardCharsets.ISO_8859_1));
+            int was = 0;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (!line.startsWith("simulationDistance:")) continue;
+                int v;
+                try { v = Integer.parseInt(line.substring("simulationDistance:".length()).trim()); } catch (NumberFormatException e) { continue; }
+                if (v <= max) continue;
+                was = v;
+                lines.set(i, "simulationDistance:" + max);
+            }
+            if (was == 0) return 0;
+            Files.write(file, (String.join("\n", lines) + "\n").getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            return was;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
      * Ни у одной видеокарты нет драйвера производителя — Windows рисует процессором (Basic Render).
      * 29.10.2026 у 2dd3373f Rust так запускался 10 минут и «лагал жёстко»; таких пятеро за двое суток.
      */
@@ -247,6 +311,28 @@ public class RustcraftService {
      * или уже скачанный, если до GitHub не достучаться.
      */
     public Path ensureInstalled(Consumer<String> log) throws IOException {
+        synchronized (INSTALL_LOCK) {
+            return ensureInstalledLocked(log);
+        }
+    }
+
+    /** Одна установка за раз: фоновая докачка при открытии лаунчера и «Играть» писали бы в одну папку. */
+    private static final Object INSTALL_LOCK = new Object();
+
+    /**
+     * При открытии лаунчера: движок уже скачан, а на сайте новее — докачать сейчас, в фоне, а не на
+     * «Играть». 31.10.2026, v0.0.1-bl3: владелец попросил, чтобы новая сборка доходила до всех, у
+     * кого Rust уже стоит; раньше она приезжала только с запуском игры (+17 МБ к ожиданию). Нет
+     * скачанного движка — null: тем, кто Rust не выбирал, ничего не качаем.
+     */
+    public Path updateIfInstalled(Consumer<String> log) throws IOException {
+        synchronized (INSTALL_LOCK) {
+            if (!platformSupported() || newestInstalled() == null) return null;
+            return installFromMirror(log);
+        }
+    }
+
+    private Path ensureInstalledLocked(Consumer<String> log) throws IOException {
         if (!platformSupported()) {
             throw new IOException("Rustcraft есть только для Windows x64 и Linux x86-64");
         }

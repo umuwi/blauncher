@@ -35,9 +35,10 @@ public final class Capes {
             byte[] bytes = hash.equals(BlConfig.selfCapeHash()) ? BlConfig.selfCapeBytes() : null;
             if (bytes == null) bytes = BlRegistry.downloadCape(hash);
             NativeImage image = NativeImage.read(bytes);
-            if (image.getWidth() != 64 || image.getHeight() != 32) {
+            // 64x32 и больше в той же пропорции: модель та же, просто больше пикселей.
+            if (image.getWidth() != image.getHeight() * 2 || image.getWidth() % 64 != 0) {
                 image.close();
-                return;   // only the standard layout; anything else would map onto the model wrong
+                return;   // anything else would map onto the model wrong
             }
             Identifier id = Identifier.of("blcore", "capes/" + hash);
             MinecraftClient.getInstance().execute(() -> {

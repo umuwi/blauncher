@@ -38,6 +38,8 @@ public class GameLaunchService {
     // cover all of them rather than only the most recent.
     private final java.util.List<Process> gameProcesses =
             java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    /** Те из них, что идут на Rust: их вывод читает лаунчер, и без него движок падает (см. isRustRunning). */
+    private final java.util.Set<Process> rustProcesses = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public GameLaunchService(Path gameDir, ModLoaderService modLoaderService,
                              VersionDownloadService versionDownloadService, LauncherConfig config) {
@@ -165,6 +167,7 @@ public class GameLaunchService {
         }
         pb.directory(gameDir.toFile());
         pb.redirectErrorStream(true);
+        dropUserJavaOptions(pb, callback);
         if (engine != null) {
             // Без этих переменных Rustcraft ищет игру в %APPDATA%\.minecraft, а свои миры и
             // настройки держит в %LOCALAPPDATA%\rustcraft — направляем его на папку лаунчера.
@@ -190,6 +193,8 @@ public class GameLaunchService {
 
         final Process proc = pb.start();
         gameProcesses.add(proc);
+        if (engine != null) rustProcesses.add(proc);
+        rememberRunning(proc);
         final Path argFileToClean = argFile;
         final Path nativesToClean = nativesDir;
         // Для enableWslGpu: 1 — игра штатно закрылась («Stopping!»), 2 — после этого упала JVM.
@@ -247,6 +252,8 @@ public class GameLaunchService {
                 callback.onError("Game process interrupted: " + e.getMessage());
             } finally {
                 gameProcesses.remove(proc);
+                rustProcesses.remove(proc);
+                forgetRunning(proc.pid());
                 if (launchLog != null) {
                     try {
                         Files.writeString(launchLog, "\n[BLAUNCHER] Game exited with code " + exitCode + "\n",
@@ -297,6 +304,19 @@ public class GameLaunchService {
         env.put("JDK_JAVA_OPTIONS", (opts + " -XX:-CreateCoredumpOnCrash").trim());
         callback.onOutput("[LAUNCH] WSL: отрисовка через видеокарту (GALLIUM_DRIVER=d3d12)");
         return true;
+    }
+
+    /**
+     * Настройки Java из переменных Windows действуют на каждый запуск и прячутся от игрока. 03.11.2026 у
+     * 32cd6ff4 Rust пять раз падал на «Picked up JAVA_TOOL_OPTIONS», код 1. Игре они не нужны.
+     */
+    static void dropUserJavaOptions(ProcessBuilder pb, GameOutputCallback callback) {
+        Map<String, String> env = pb.environment();
+        for (String name : List.of("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS")) {
+            if (env.remove(name) != null && callback != null) {
+                callback.onOutput("[LAUNCH] Переменная Windows " + name + " не передаётся игре");
+            }
+        }
     }
 
     /** How many per-launch logs to keep around before the oldest ones are pruned. */
@@ -999,6 +1019,8 @@ public class GameLaunchService {
     public int cleanupOrphanNatives() {
         Path nativesRoot = gameDir.resolve("natives");
         if (!Files.isDirectory(nativesRoot)) return 0;
+        // Игра от прошлого запуска лаунчера ещё идёт (см. orphanGames) — её natives не трогаем.
+        if (!orphanGames().isEmpty()) return 0;
         int removed = 0;
         try (Stream<Path> dirs = Files.list(nativesRoot)) {
             for (Path dir : dirs.filter(Files::isDirectory).collect(Collectors.toList())) {
@@ -1097,7 +1119,10 @@ public class GameLaunchService {
             if (!(os instanceof com.sun.management.OperatingSystemMXBean sun)) return maxMem;
             long freeMb = sun.getFreeSwapSpaceSize() / (1024 * 1024);
             if (freeMb <= 0) return maxMem;
-            int fits = (int) Math.max(2048, (freeMb - 1536) / 512 * 512);
+            // Запас растёт после вылетов native_oom: 03.11.2026 у 6f7fae47 Fabric 1.21.4 с урезанной
+            // кучей всё равно дважды упал через 1 и 8 минут — моды и драйвер съели больше 1,5 ГБ.
+            int reserve = 1536 + config.getNativeOomReserveMb();
+            int fits = (int) Math.max(2048, (freeMb - reserve) / 512 * 512);
             if (fits >= maxMem) return maxMem;
             heapCapNotice = "Windows может выделить ещё только " + gb(freeMb) + " ГБ — игра запущена с "
                     + gb(fits) + " ГБ вместо " + gb(maxMem) + " ГБ, иначе она вылетит посреди игры. "
@@ -1226,6 +1251,11 @@ public class GameLaunchService {
             int cpIndex = command.indexOf("-cp");
             if (!blArgs.isEmpty() && cpIndex > 0) command.addAll(cpIndex, blArgs);
         }
+        // Свой скин и плащ без мода и на чистой игре (см. BlSkinsAgent).
+        List<String> skinArgs = BlSkinsAgent.jvmArgs(gameDir, username, skinUrl, capeUrl,
+                System.out::println);
+        int skinIndex = command.indexOf("-cp");
+        if (!skinArgs.isEmpty() && skinIndex > 0) command.addAll(skinIndex, skinArgs);
 
         String accessToken = msaToken && authService.getAccessToken() != null
                 ? authService.getAccessToken() : "0";
@@ -1808,11 +1838,23 @@ public class GameLaunchService {
      *  all of them at once). Each process's own exit thread then handles its cleanup. */
     public void stopGame() {
         for (Process p : new java.util.ArrayList<>(gameProcesses)) {
-            if (p.isAlive()) p.destroy();
+            if (p.isAlive()) destroyWithChildren(p.toHandle());
         }
+        for (ProcessHandle h : orphanGames()) destroyWithChildren(h);
     }
 
-    /** Сколько копий игры сейчас идёт. */
+    /**
+     * Подготовка Rust — это rustcraft.exe и до шести его программ на Java. Они переживали его ещё
+     * на 9 с (замер 05.11.2026, на слабом ПК дольше) и занимали память, пока подготовка уже шла заново.
+     * Список снимается до остановки: потом родителя у них не будет.
+     */
+    private static void destroyWithChildren(ProcessHandle h) {
+        java.util.List<ProcessHandle> children = h.descendants().toList();
+        h.destroy();
+        children.forEach(ProcessHandle::destroy);
+    }
+
+    /** Сколько копий игры сейчас идёт (с оставшимися от прошлого запуска лаунчера). */
     public int runningGameCount() {
         int n = 0;
         synchronized (gameProcesses) {
@@ -1820,7 +1862,78 @@ public class GameLaunchService {
                 if (p.isAlive()) n++;
             }
         }
-        return n;
+        return n + orphanGames().size();
+    }
+
+    // Java-игра переживает закрытие лаунчера, а новый лаунчер о ней не знал: 03.11.2026 у 6f7fae47
+    // Fabric 1.21.4 шёл с 15:14, лаунчер перезапустили, в 15:38 запустилась вторая копия, и через
+    // минуту обе не поместились в память (native_oom), а потом ещё раз через 8 минут. С 01.11 так
+    // открывали лаунчер при идущей игре 45 установок. Поэтому номер процесса игры пишем в
+    // launcher_root/.bl_running/<pid> (внутри — время старта, чтобы не спутать с чужим процессом
+    // под тем же номером), и новый лаунчер считает такие игры идущими: переспрос второй копии и
+    // «Остановить» работают и для них.
+    private Path runningDir() {
+        return gameDir.resolve(".bl_running");
+    }
+
+    private void rememberRunning(Process proc) {
+        try {
+            long started = proc.toHandle().info().startInstant().map(java.time.Instant::toEpochMilli)
+                    .orElse(System.currentTimeMillis());
+            Files.createDirectories(runningDir());
+            Files.writeString(runningDir().resolve(String.valueOf(proc.pid())), String.valueOf(started));
+        } catch (Exception ignored) {
+            // Без отметки всё работает как раньше — только вторую копию не заметим после перезапуска.
+        }
+    }
+
+    private void forgetRunning(long pid) {
+        try { Files.deleteIfExists(runningDir().resolve(String.valueOf(pid))); } catch (Exception ignored) { }
+    }
+
+    /** Игры, запущенные прошлым процессом лаунчера и ещё живые; отметки умерших удаляются. */
+    private java.util.List<ProcessHandle> orphanGames() {
+        java.util.List<ProcessHandle> out = new java.util.ArrayList<>();
+        Path dir = runningDir();
+        if (!Files.isDirectory(dir)) return out;
+        java.util.Set<Long> own = new java.util.HashSet<>();
+        synchronized (gameProcesses) {
+            for (Process p : gameProcesses) own.add(p.pid());
+        }
+        try (var files = Files.list(dir)) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                long pid;
+                long started;
+                try {
+                    pid = Long.parseLong(f.getFileName().toString());
+                    started = Long.parseLong(Files.readString(f).trim());
+                } catch (Exception e) {
+                    try { Files.deleteIfExists(f); } catch (Exception ignored) { }
+                    continue;
+                }
+                if (own.contains(pid)) continue;
+                java.util.Optional<ProcessHandle> h = ProcessHandle.of(pid);
+                // Номер мог достаться другой программе: тогда и время старта другое.
+                boolean same = h.isPresent() && h.get().isAlive() && h.get().info().startInstant()
+                        .map(t -> Math.abs(t.toEpochMilli() - started) < 5000).orElse(false);
+                if (same) out.add(h.get());
+                else try { Files.deleteIfExists(f); } catch (Exception ignored) { }
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /**
+     * Идёт ли игра на Rust (30.10.2026). Её вывод идёт в лаунчер по трубе; закрыли лаунчер —
+     * труба рвётся, и первая же строка журнала роняет rustcraft.exe с кодом 101 (Rust падает,
+     * когда не может напечатать). Строк больше всего при входе в мир — там игроки и «вылетали».
+     * Java такие ошибки молча глотает, поэтому Java-игре закрытие лаунчера не мешает.
+     */
+    public boolean isRustRunning() {
+        for (Process p : rustProcesses) {
+            if (p.isAlive()) return true;
+        }
+        return false;
     }
 
     public boolean isGameRunning() {
@@ -1829,7 +1942,7 @@ public class GameLaunchService {
                 if (p.isAlive()) return true;
             }
         }
-        return false;
+        return !orphanGames().isEmpty();
     }
 
     // ===================== DEDICATED SERVER =====================
@@ -2064,6 +2177,7 @@ public class GameLaunchService {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(serverDir.toFile());
         pb.redirectErrorStream(true);
+        dropUserJavaOptions(pb, callback);
         Process process = pb.start();
         serverProcesses.put(serverKey, process);
 

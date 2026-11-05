@@ -55,7 +55,18 @@ public final class SkinPreview {
             return source;
         }
         int factor = Math.max(1, BOX / CAPE_H);
-        return scale(source, 0, 0, CAPE_W, CAPE_H, factor);
+        int k = (int) source.getWidth() / 64;
+        if (k <= 1) return scale(source, 0, 0, CAPE_W, CAPE_H, factor);
+        // Большой плащ: те же 60x96, каждый пиксель превью берём из его области.
+        int w = CAPE_W * factor, h = CAPE_H * factor;
+        javafx.scene.image.WritableImage out = new javafx.scene.image.WritableImage(w, h);
+        PixelReader reader = source.getPixelReader();
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                out.getPixelWriter().setArgb(x, y, reader.getArgb(x * CAPE_W * k / w, y * CAPE_H * k / h));
+            }
+        }
+        return out;
     }
 
     /**

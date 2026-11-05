@@ -17,6 +17,15 @@ import java.util.concurrent.Executors;
  */
 public class LocalSkinServer implements AutoCloseable {
 
+    /** Сколько раз игра просила текстуры: 0 при запущенной игре значит, что скин до неё не дошёл (см. отметку blskins). */
+    private static final java.util.concurrent.atomic.AtomicInteger skinHits = new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger capeHits = new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Счётчики с прошлого вызова: {скин, плащ}. */
+    public static int[] takeHits() {
+        return new int[]{skinHits.getAndSet(0), capeHits.getAndSet(0)};
+    }
+
     private final HttpServer server;
     private final ExecutorService pool;
     private final String skinUrl;
@@ -45,13 +54,23 @@ public class LocalSkinServer implements AutoCloseable {
             int port = server.getAddress().getPort();
             if (skinBytes != null) {
                 final byte[] bytes = skinBytes;
-                server.createContext("/skin.png", exchange -> writeImage(exchange, bytes));
-                skinUrl = "http://127.0.0.1:" + port + "/skin.png";
+                // Игра кладёт текстуру в кэш по имени файла: с постоянным «skin.png» новый скин не появился
+                // бы никогда. -slim в имени читает BlSkinsAgent: узкие руки нужно указать игре отдельно.
+                String path = "/skin-" + contentId(bytes) + (isSlim(bytes) ? "-slim" : "") + ".png";
+                server.createContext(path, exchange -> {
+                    skinHits.incrementAndGet();
+                    writeImage(exchange, bytes);
+                });
+                skinUrl = "http://127.0.0.1:" + port + path;
             }
             if (capeBytes != null) {
                 final byte[] bytes = capeBytes;
-                server.createContext("/cape.png", exchange -> writeImage(exchange, bytes));
-                capeUrl = "http://127.0.0.1:" + port + "/cape.png";
+                String path = "/cape-" + contentId(bytes) + ".png";
+                server.createContext(path, exchange -> {
+                    capeHits.incrementAndGet();
+                    writeImage(exchange, bytes);
+                });
+                capeUrl = "http://127.0.0.1:" + port + path;
             }
 
             // Без исполнителя HttpServer обслуживает запросы на своём же потоке приёма, то есть
@@ -68,6 +87,25 @@ public class LocalSkinServer implements AutoCloseable {
             server.stop(0);
             if (pool != null) pool.shutdownNow();
             throw e;
+        }
+    }
+
+    private static String contentId(byte[] bytes) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 24);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(java.util.Arrays.hashCode(bytes));
+        }
+    }
+
+    /** Узкие руки: в развёртке 64x64 столбец 54 у правой руки пуст, а 50 занят (как в редакторе скинов). */
+    private static boolean isSlim(byte[] png) {
+        try {
+            java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png));
+            if (image == null || image.getWidth() != 64 || image.getHeight() != 64) return false;
+            return (image.getRGB(54, 20) >>> 24) == 0 && (image.getRGB(50, 20) >>> 24) != 0;
+        } catch (IOException e) {
+            return false;
         }
     }
 

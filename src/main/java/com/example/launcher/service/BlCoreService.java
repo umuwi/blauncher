@@ -86,7 +86,8 @@ public final class BlCoreService {
             byte[] cape = normalizeCape(capeFile.get());
             Path capeOut = dir.resolve("self-cape.png");
             if (cape != null) {
-                writeAtomically(capeOut, cape);
+                // Себе — плащ как есть, даже большой; на сайт и другим игрокам — 64x32 (см. normalizeCape).
+                writeAtomically(capeOut, Files.readAllBytes(capeFile.get()));
             } else {
                 Files.deleteIfExists(capeOut);
             }
@@ -125,9 +126,9 @@ public final class BlCoreService {
     }
 
     /**
-     * The profile's cape as the 64x32 PNG the game and the site expect: a 64x32 one as is, an old
-     * 22x17 one placed in the corner of an empty 64x32. Anything else (HD capes, random pictures)
-     * gives null - it would map onto the model wrong.
+     * The profile's cape as the 64x32 PNG the site expects (at most 16 KB): a 64x32 one as is, an old
+     * 22x17 one placed in the corner of an empty 64x32, a bigger one (2:1, up to 1024x512) reduced by
+     * averaging. Anything else (random pictures) gives null - it would map onto the model wrong.
      */
     public static byte[] normalizeCape(Path capeFile) {
         try {
@@ -139,6 +140,24 @@ public final class BlCoreService {
                 out.getGraphics().drawImage(src, 0, 0, null);
             } else if (src.getWidth() == 22 && src.getHeight() == 17) {
                 out.getGraphics().drawImage(src, 0, 0, null);
+            } else if (src.getWidth() <= 1024 && src.getWidth() % 64 == 0 && src.getWidth() == src.getHeight() * 2) {
+                int k = src.getWidth() / 64;
+                for (int y = 0; y < 32; y++) {
+                    for (int x = 0; x < 64; x++) {
+                        long a = 0, r = 0, g = 0, b = 0;
+                        for (int j = 0; j < k; j++) {
+                            for (int i = 0; i < k; i++) {
+                                int c = src.getRGB(x * k + i, y * k + j);
+                                int ca = c >>> 24;
+                                a += ca;
+                                r += ((c >> 16) & 255) * ca;
+                                g += ((c >> 8) & 255) * ca;
+                                b += (c & 255) * ca;
+                            }
+                        }
+                        if (a > 0) out.setRGB(x, y, (int) (a / (k * k)) << 24 | (int) (r / a) << 16 | (int) (g / a) << 8 | (int) (b / a));
+                    }
+                }
             } else {
                 return null;
             }

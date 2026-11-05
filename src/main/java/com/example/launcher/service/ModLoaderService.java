@@ -146,6 +146,10 @@ public class ModLoaderService {
                 JsonObject lib = el.getAsJsonObject();
                 if (!lib.has("name")) continue;
                 if (lib.has("clientreq") && !lib.get("clientreq").getAsBoolean()) continue;
+                // Forge 1.5.2 перечисляет и нативы (без суффикса -natives-windows такого файла на сервере
+                // нет, 404), и LWJGL только для старых macOS: «Не скачались библиотеки» — и 04.11.2026 у
+                // e8746ddd установка не проходила. Нативы приходят из ванильного описания версии.
+                if (lib.has("natives") || lib.get("name").getAsString().contains("-platform:") || !legacyRulesAllow(lib)) continue;
                 keep.add(lib);
                 String name = lib.get("name").getAsString();
                 Path libPath = mavenToPath(name);
@@ -175,6 +179,24 @@ public class ModLoaderService {
             log.onLog("[FORGE] Установлен: " + keep.size() + " библиотек, jar " + forgeJar.getFileName());
             return true;
         }
+    }
+
+    /** Правила ОС библиотеки старого формата: последнее подходящее решает, без правил — можно. */
+    private static boolean legacyRulesAllow(JsonObject lib) {
+        if (!lib.has("rules")) return true;
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        String me = os.contains("win") ? "windows" : os.contains("mac") ? "osx" : "linux";
+        boolean allow = false;
+        for (var el : lib.getAsJsonArray("rules")) {
+            JsonObject rule = el.getAsJsonObject();
+            if (rule.has("os") && rule.getAsJsonObject("os").has("name")) {
+                if (!me.equals(rule.getAsJsonObject("os").get("name").getAsString())) continue;
+                // Правило о конкретных версиях macOS к другим системам не относится.
+                if (rule.getAsJsonObject("os").has("version") && !"osx".equals(me)) continue;
+            }
+            allow = "allow".equals(rule.get("action").getAsString());
+        }
+        return allow;
     }
 
     // -------------------- FABRIC --------------------
@@ -360,6 +382,7 @@ public class ModLoaderService {
         String url = vds.getNeoForgeInstallerUrl(mc, neoVer);
         Path jar = librariesDir.resolve("neoforge/neoforge-" + neoVer + "-installer.jar");
         ensureInstallerJar(url, jar, log);
+        if (vds.isNeoForgeViaMirror()) prefetchNeoForgeLibraries(jar, log);
         log.onLog("[NEOFORGE] Running installer...");
         runClientInstaller(jar, "neoforge-" + neoVer,
                 List.of(librariesDir.resolve("net/neoforged/neoforge/" + neoVer)), log);
@@ -377,6 +400,56 @@ public class ModLoaderService {
         }
         Files.writeString(librariesDir.resolve("neoforge/" + folder + ".mainclass"), mcMain);
         log.onLog("[NEOFORGE] mainClass = " + mcMain);
+    }
+
+    /**
+     * maven.neoforged.net не открывается (список или установщик пришли с зеркала blauncher.ru):
+     * установщик сам пошёл бы за своими библиотеками туда же и упал. Кладём их заранее с
+     * зеркала — файл на месте с верным sha1 установщик не качает. Берём из install_profile.json
+     * (инструменты установки) и version.json (библиотеки игры) внутри установщика только то, что
+     * лежит на maven.neoforged.net; библиотеки Mojang установщик скачает сам.
+     */
+    private void prefetchNeoForgeLibraries(Path installer, LogCallback log) {
+        List<String[]> wanted = new ArrayList<>();   // url, path, sha1
+        try (JarFile jar = new JarFile(installer.toFile())) {
+            for (String name : List.of("install_profile.json", "version.json")) {
+                var entry = jar.getEntry(name);
+                if (entry == null) continue;
+                JsonObject root;
+                try (InputStream in = jar.getInputStream(entry)) {
+                    root = JsonParser.parseString(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8))
+                            .getAsJsonObject();
+                }
+                if (!root.has("libraries")) continue;
+                for (var el : root.getAsJsonArray("libraries")) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject lib = el.getAsJsonObject();
+                    if (!lib.has("downloads") || !lib.getAsJsonObject("downloads").has("artifact")) continue;
+                    JsonObject art = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
+                    String url = art.has("url") ? art.get("url").getAsString() : "";
+                    if (VersionDownloadService.neoForgeMirrorUrl(url) == null || !art.has("path")) continue;
+                    wanted.add(new String[]{url, art.get("path").getAsString(),
+                            art.has("sha1") ? art.get("sha1").getAsString() : null});
+                }
+            }
+        } catch (Exception e) {
+            log.onLog("[NEOFORGE] Не прочитал список библиотек установщика: " + e.getMessage());
+            return;
+        }
+        log.onLog("[NEOFORGE] maven.neoforged.net недоступен — беру " + wanted.size() + " библиотек с зеркала blauncher.ru");
+        int failed = 0;
+        for (String[] w : wanted) {
+            if (Thread.currentThread().isInterrupted()) return;
+            Path dest = librariesDir.resolve(w[1]);
+            try {
+                vds.downloadNeoForgeFile(w[0], dest, 2, w[2]);
+            } catch (Exception e) {
+                failed++;
+                log.onLog("[NEOFORGE] Не скачалась " + dest.getFileName() + ": " + e.getMessage());
+            }
+        }
+        // Не скачалось — не беда сама по себе: установщик попробует ещё раз и скажет, чего нет.
+        if (failed > 0) log.onLog("[NEOFORGE] С зеркала не пришло " + failed + " из " + wanted.size());
     }
 
     // ---------------------------------------------------------------
@@ -512,6 +585,13 @@ public class ModLoaderService {
                 Path m = librariesDir.resolve("neoforge/" + versionId + ".mainclass");
                 if (!Files.exists(m) && loaderVersion != null)
                     m = librariesDir.resolve("neoforge/neoforge-" + loaderVersion + ".mainclass");
+                // Линейка 1.20.1: installNeoForge пишет маркер по папке «1.20.1-forge-47.1.106». Его
+                // здесь не искали, главный класс брался ванильный, и isLoaderReady каждый раз
+                // отвечал «нет» — NeoForge 1.20.1 ставился заново при каждом «Играть» (31.10.2026:
+                // в среднем 86 с от щелчка до игры против 23 с у NeoForge 1.21.1).
+                String legacy = VersionDownloadService.legacyNeoForgeFolder(loaderVersion);
+                if (!Files.exists(m) && legacy != null)
+                    m = librariesDir.resolve("neoforge/" + legacy + ".mainclass");
                 yield m;
             }
             case "fabric"   -> librariesDir.resolve("fabric/fabric-" + versionId + ".mainclass");
@@ -563,22 +643,8 @@ public class ModLoaderService {
      * net.minecraft.launchwrapper.Launch». Нет хоть одной — ставим загрузчик заново.
      */
     private boolean loaderLibrariesPresent(String versionId, String modLoader, String loaderVersion) {
-        if (loaderVersion == null || loaderVersion.isBlank()) return true;
-        String folder;
-        if ("forge".equals(modLoader)) {
-            folder = versionId + "-forge-" + loaderVersion;
-            if (!Files.isDirectory(gameDir.resolve("versions").resolve(folder))
-                    && Files.isDirectory(gameDir.resolve("versions").resolve(versionId + "-" + loaderVersion))) {
-                folder = versionId + "-" + loaderVersion;
-            }
-        } else if ("neoforge".equals(modLoader)) {
-            folder = vds.findNeoForgeVersionFolder(gameDir, loaderVersion);
-            if (folder == null) return true;   // старая раскладка — как раньше, по главному классу
-        } else {
-            return true;
-        }
-        Path json = gameDir.resolve("versions").resolve(folder).resolve(folder + ".json");
-        if (!Files.isRegularFile(json)) return true;
+        Path json = loaderVersionJson(versionId, modLoader, loaderVersion);
+        if (json == null || !Files.isRegularFile(json)) return true;
         try {
             JsonObject obj = JsonParser.parseString(Files.readString(json)).getAsJsonObject();
             if (!obj.has("libraries")) return true;
@@ -599,6 +665,65 @@ public class ModLoaderService {
         } catch (Exception e) {
             return true;   // json не читается — решит запуск, переставлять вслепую не будем
         }
+    }
+
+    /** Описание версии Forge/NeoForge на диске; null — другой загрузчик или старая раскладка. */
+    private Path loaderVersionJson(String versionId, String modLoader, String loaderVersion) {
+        if (loaderVersion == null || loaderVersion.isBlank()) return null;
+        String folder;
+        if ("forge".equals(modLoader)) {
+            folder = versionId + "-forge-" + loaderVersion;
+            if (!Files.isDirectory(gameDir.resolve("versions").resolve(folder))
+                    && Files.isDirectory(gameDir.resolve("versions").resolve(versionId + "-" + loaderVersion))) {
+                folder = versionId + "-" + loaderVersion;
+            }
+        } else if ("neoforge".equals(modLoader)) {
+            folder = vds.findNeoForgeVersionFolder(gameDir, loaderVersion);
+            if (folder == null) return null;   // старая раскладка — как раньше, по главному классу
+        } else {
+            return null;
+        }
+        return gameDir.resolve("versions").resolve(folder).resolve(folder + ".json");
+    }
+
+    /**
+     * После «Java не нашла главный класс»: удаляет jar загрузчика, которые не открываются как архив, и
+     * смотрит, есть ли главный класс хоть в одном из них. Возвращает число проблем; больше нуля —
+     * загрузчик ставится заново, удалённое скачается. Размер и sha1 тут не помогают: у старого Forge в
+     * описании нет контрольных сумм, а обрезанный файл ненулевого размера проходит проверку наличия.
+     */
+    public int dropBrokenLoaderLibraries(String versionId, String modLoader, String loaderVersion) {
+        Path json = loaderVersionJson(versionId, modLoader, loaderVersion);
+        if (json == null || !Files.isRegularFile(json)) return 0;
+        int broken = 0;
+        try {
+            JsonObject obj = JsonParser.parseString(Files.readString(json)).getAsJsonObject();
+            if (!obj.has("libraries")) return 0;
+            String mainEntry = obj.has("mainClass") ? obj.get("mainClass").getAsString().replace('.', '/') + ".class" : null;
+            boolean mainFound = false;
+            for (var el : obj.getAsJsonArray("libraries")) {
+                if (!el.isJsonObject()) continue;
+                JsonObject lib = el.getAsJsonObject();
+                if (lib.has("rules") || lib.has("natives")) continue;
+                Path file = null;
+                if (lib.has("downloads") && lib.getAsJsonObject("downloads").has("artifact")) {
+                    JsonObject art = lib.getAsJsonObject("downloads").getAsJsonObject("artifact");
+                    if (art.has("path")) file = librariesDir.resolve(art.get("path").getAsString());
+                }
+                if (file == null && lib.has("name")) file = mavenToPath(lib.get("name").getAsString());
+                if (file == null || !Files.isRegularFile(file)) continue;
+                try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(file.toFile())) {
+                    if (mainEntry != null && zip.getEntry(mainEntry) != null) mainFound = true;
+                } catch (IOException bad) {
+                    Files.deleteIfExists(file);
+                    broken++;
+                }
+            }
+            if (broken == 0 && mainEntry != null && !mainFound) broken = 1;
+        } catch (Exception e) {
+            return broken;   // json не читается — решит запуск, переставлять вслепую не будем
+        }
+        return broken;
     }
 
     private String readMainClassFromVersionDir(String versionId) {
@@ -869,7 +994,7 @@ public class ModLoaderService {
         if (!Files.exists(dest)) {
             log.onLog("[LOADER] Скачивание установщика: " + dest.getFileName());
             try {
-                vds.downloadFileWithRetries(url, dest, 3);
+                vds.downloadNeoForgeFile(url, dest, 3, null);   // не NeoForge — просто url
             } catch (IOException e) {
                 Files.deleteIfExists(dest);
                 throw new IOException("Не удалось скачать установщик " + url + ": " + e.getMessage(), e);
@@ -909,10 +1034,12 @@ public class ModLoaderService {
                     + ". Укажите путь к Java в настройках лаунчера.");
         }
 
-        Process p = new ProcessBuilder(
+        ProcessBuilder installerPb = new ProcessBuilder(
                 javaExe, "-jar", jar.toAbsolutePath().toString(),
                 installFlag, targetDir.toAbsolutePath().toString())
-                .directory(targetDir.toFile()).redirectErrorStream(true).start();
+                .directory(targetDir.toFile()).redirectErrorStream(true);
+        GameLaunchService.dropUserJavaOptions(installerPb, null);
+        Process p = installerPb.start();
         runningInstaller = p;
         if (pidFile != null) Files.writeString(pidFile, Long.toString(p.pid()));
         // Close stdin immediately: some installer builds probe stdin for input and

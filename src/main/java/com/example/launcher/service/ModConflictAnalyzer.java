@@ -95,8 +95,10 @@ public class ModConflictAnalyzer {
             // solution line - treat the required mod as something to (re)install.
             m = REQUIRES.matcher(trimmed);
             if (m.find()) {
-                add(out, new Suggestion(Action.REPLACE, m.group(3), m.group(2),
-                        extractPrefix(m.group(1)), trimmed));
+                // «… which is missing!» — мода нет вовсе: его ставить, а не менять версию (01.11.2026:
+                // в отметке fix= такие шли как up:, хотя «Починка» и так ставила мод).
+                Action a = trimmed.contains("which is missing") ? Action.INSTALL : Action.REPLACE;
+                add(out, new Suggestion(a, m.group(3), m.group(2), extractPrefix(m.group(1)), trimmed));
             }
         }
         return new ArrayList<>(out.values());
